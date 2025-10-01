@@ -1,6 +1,6 @@
 import torch
 
-from HTGSCudaBackend import _C
+from FoveatedHTGSCudaBackend import _C
 
 def update_3d_filter(
         positions: torch.Tensor,

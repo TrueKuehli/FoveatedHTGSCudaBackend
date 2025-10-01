@@ -5,7 +5,7 @@ from setuptools import setup
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 
 __author__ = 'Florian Hahlbohm'
-__description__ = 'Provides various CUDA-accelerated functionality for the HTGS method.'
+__description__ = 'Provides various CUDA-accelerated functionality for the foveated HTGS method.'
 
 ENABLE_NVCC_LINEINFO = False  # set to True for profiling kernels with Nsight Compute (overhead is minimal)
 

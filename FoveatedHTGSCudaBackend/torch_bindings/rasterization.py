@@ -3,7 +3,7 @@ from enum import Enum
 import torch
 from torch.autograd.function import once_differentiable
 
-from HTGSCudaBackend import _C, _C_benchmarking
+from FoveatedHTGSCudaBackend import _C, _C_benchmarking
 
 
 class RasterizerMode(Enum):
@@ -113,7 +113,7 @@ class _Rasterize(torch.autograd.Function):
         )
 
 
-class HTGSRasterizer(torch.nn.Module):
+class FoveatedHTGSRasterizer(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
