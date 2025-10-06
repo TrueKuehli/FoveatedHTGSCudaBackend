@@ -9,8 +9,9 @@ __description__ = 'Provides various CUDA-accelerated functionality for the fovea
 
 ENABLE_NVCC_LINEINFO = False  # set to True for profiling kernels with Nsight Compute (overhead is minimal)
 
-module_root = Path(__file__).parent.absolute()
-extension_name = module_root.name
+
+module_root = Path(__file__).parent.relative_to(Path.cwd())
+extension_name = module_root.absolute().name
 extension_root = module_root / extension_name
 cuda_modules = [d.name for d in Path(extension_root).iterdir() if d.is_dir() and d.name not in ['utils', 'torch_bindings']]
 
@@ -31,9 +32,9 @@ for src in all_sources:
     else:
         base_sources.append(src)
 
-include_dirs = [str(extension_root / 'utils')]
+include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
-    include_dirs.append(str(extension_root / module / 'include'))
+    include_dirs.append(str(extension_root.absolute() / module / 'include'))
 
 cxx_flags, nvcc_flags = [], []
 if ENABLE_NVCC_LINEINFO:
