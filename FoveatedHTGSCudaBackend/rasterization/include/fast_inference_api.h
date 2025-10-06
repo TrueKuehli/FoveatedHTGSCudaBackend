@@ -14,7 +14,7 @@ namespace htgs::rasterization {
         const torch::Tensor& M,
         const torch::Tensor& VPM,
         const torch::Tensor& cam_position,
-        const int rasterizer_mode,
+        const torch::Tensor& gaze_position,
         const int K,
         const int active_sh_bases,
         const int width,

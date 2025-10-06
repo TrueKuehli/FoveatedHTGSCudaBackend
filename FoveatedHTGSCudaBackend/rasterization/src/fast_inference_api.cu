@@ -1,9 +1,5 @@
 #include "fast_inference_api.h"
-
-#include "alpha_blend_first_k/fast_inference.h"
-#include "alpha_blend_global_ordering/fast_inference.h"
 #include "hybrid_blend/fast_inference.h"
-#include "oit_blend/fast_inference.h"
 
 #include "torch_utils.h"
 #include "helper_math.h"
@@ -28,7 +24,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const torch::Tensor& M,
     const torch::Tensor& VPM,
     const torch::Tensor& cam_position,
-    const int rasterizer_mode,
+    const torch::Tensor& gaze_position,
     const int K,
     const int active_sh_bases,
     const int width,
@@ -66,6 +62,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
                 reinterpret_cast<const float4*>(M.contiguous().data_ptr<float>()),
                 reinterpret_cast<const float4*>(VPM.contiguous().data_ptr<float>()),
                 reinterpret_cast<const float3*>(cam_position.contiguous().data_ptr<float>()),
+                reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
                 image.data_ptr<float>(),
                 K,
                 n_primitives,
@@ -157,6 +154,6 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         default:
             throw std::runtime_error("unsupported rasterizer mode");
     }
-    
+
     return image;
 }

@@ -1,23 +1,16 @@
 from typing import Any, NamedTuple
-from enum import Enum
+
 import torch
 from torch.autograd.function import once_differentiable
 
 from FoveatedHTGSCudaBackend import _C, _C_benchmarking
 
 
-class RasterizerMode(Enum):
-    HYBRID_BLEND = 0
-    ALPHA_BLEND_FIRST_K = 1
-    ALPHA_BLEND_GLOBAL_ORDERING = 2
-    OIT_BLEND = 3
-
-
 class RasterizerSettings(NamedTuple):
     M: torch.Tensor  # affine transformation from model/world space to camera/view space
     VPM: torch.Tensor  # homogeneous transformation from model/world space to screen space
     cam_position: torch.Tensor  # camera position in world space
-    mode: RasterizerMode
+    gaze_position: torch.Tensor  # gaze position in screen space
     K: int  # only used for HYBRID_BLEND and ALPHA_BLEND_FIRST_K
     active_sh_bases: int  # number of spherical harmonics bases to use for color computation
     width: int
@@ -31,7 +24,7 @@ class RasterizerSettings(NamedTuple):
             self.M,
             self.VPM,
             self.cam_position,
-            self.mode.value,
+            self.gaze_position,
             self.K,
             self.active_sh_bases,
             self.width,

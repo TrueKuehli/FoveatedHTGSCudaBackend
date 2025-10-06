@@ -18,6 +18,7 @@ namespace htgs::rasterization::hybrid_blend {
         const float4* M,
         const float4* VPM,
         const float3* cam_position,
+        const float2* gaze_position,
         float* image,
         float* depth,
         const int K,

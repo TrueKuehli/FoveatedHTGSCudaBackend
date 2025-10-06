@@ -40,6 +40,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     const float4* M,
     const float4* VPM,
     const float3* cam_position,
+    const float2* gaze_position,
     float* image,
     const int K,
     const int n_primitives,
