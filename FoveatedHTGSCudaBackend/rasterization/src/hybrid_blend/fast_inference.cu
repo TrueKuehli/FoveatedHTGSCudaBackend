@@ -181,4 +181,14 @@ void htgs::rasterization::hybrid_blend::fast_inference(
 
     }, buffer_variant);
 
+    // Draw a red dot at the gaze position for visualization
+    const dim3 dot_grid(1, 1, 1);
+    const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
+    htgs::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
+        image,
+        gaze_position,
+        width,
+        height,
+        to_chw
+    );
 }

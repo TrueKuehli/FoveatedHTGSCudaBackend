@@ -27,6 +27,9 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int tile_width = 8;
     DEF int tile_height = 8;
     DEF int block_size_blend = tile_width * tile_height;
+
+    DEF int gaze_visualization_width = 5;
+    DEF int gaze_visualization_size = gaze_visualization_width * gaze_visualization_width;
 }
 
 namespace config = htgs::rasterization::hybrid_blend::config;
