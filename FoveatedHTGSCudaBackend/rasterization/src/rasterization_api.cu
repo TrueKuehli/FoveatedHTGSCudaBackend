@@ -61,6 +61,7 @@ htgs::rasterization::forward_wrapper(
         reinterpret_cast<float4*>(M.contiguous().data_ptr<float>()),
         reinterpret_cast<float4*>(VPM.contiguous().data_ptr<float>()),
         reinterpret_cast<float3*>(cam_position.contiguous().data_ptr<float>()),
+        reinterpret_cast<float2*>(gaze_position.contiguous().data_ptr<float>()),
         image.data_ptr<float>(),
         K,
         n_primitives,
@@ -92,6 +93,7 @@ htgs::rasterization::backward_wrapper(
     const torch::Tensor& M,
     const torch::Tensor& VPM,
     const torch::Tensor& cam_position,
+    const torch::Tensor& gaze_position,
     const int K,
     const int active_sh_bases,
     const int width,
@@ -112,7 +114,7 @@ htgs::rasterization::backward_wrapper(
     torch::Tensor grad_opacities = torch::zeros({n_primitives, 1}, float_options);
     torch::Tensor grad_sh_0 = torch::zeros({n_primitives, 1, 3}, float_options);
     torch::Tensor grad_sh_rest = torch::zeros({n_primitives, total_sh_bases, 3}, float_options);
-    torch::Tensor grad_VPMT = (mode == RasterizerMode::HYBRID_BLEND || mode == RasterizerMode::OIT_BLEND) ? torch::zeros({n_primitives * 9}, float_options) : torch::empty({0}, float_options);
+    torch::Tensor grad_VPMT = torch::zeros({n_primitives * 9}, float_options);
 
     const bool update_densification_info = densification_info.size(0) > 0;
     const bool compute_abs_grad = densification_info.size(0) == 3;
@@ -205,6 +207,7 @@ htgs::rasterization::inference_wrapper(
         reinterpret_cast<const float4*>(M.contiguous().data_ptr<float>()),
         reinterpret_cast<const float4*>(VPM.contiguous().data_ptr<float>()),
         reinterpret_cast<const float3*>(cam_position.contiguous().data_ptr<float>()),
+        reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
         image.data_ptr<float>(),
         depth.data_ptr<float>(),
         K,
@@ -232,6 +235,7 @@ void htgs::rasterization::update_max_weights_wrapper(
     const torch::Tensor& M,
     const torch::Tensor& VPM,
     const torch::Tensor& cam_position,
+    const torch::Tensor& gaze_position,
     const int K,
     const int active_sh_bases,
     const int width,
