@@ -1,8 +1,5 @@
 #include "rasterization_api.h"
-#include "hybrid_blend/forward.h"
-#include "hybrid_blend/backward.h"
 #include "hybrid_blend/inference.h"
-#include "hybrid_blend/update_max_weights.h"
 
 #include "torch_utils.h"
 #include "helper_math.h"
