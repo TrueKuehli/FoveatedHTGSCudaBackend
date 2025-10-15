@@ -195,6 +195,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         const dim3 blend_grid(num_active_tiles, 1, 1);
         blend_k_templated(blend_grid, block, K,
             per_tile_buffers.tile_index_map,
+            per_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
             per_primitive_buffers.VPMT1,
             per_primitive_buffers.VPMT2,
