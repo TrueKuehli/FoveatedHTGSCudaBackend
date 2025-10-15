@@ -225,6 +225,10 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const int x_off = thread_index.x - config::gaze_visualization_width / 2;
         const int y_off = thread_index.y - config::gaze_visualization_width / 2;
 
+        if constexpr (config::gaze_visualization_circular) {
+            if (x_off * x_off + y_off * y_off > (config::gaze_visualization_width / 2) * (config::gaze_visualization_width / 2)) return;
+        }
+
         const int x = static_cast<int>(gaze_position->x) + x_off;
         const int y = static_cast<int>(gaze_position->y) + y_off;
         if (x < 0 || x >= width || y < 0 || y >= height) return;
