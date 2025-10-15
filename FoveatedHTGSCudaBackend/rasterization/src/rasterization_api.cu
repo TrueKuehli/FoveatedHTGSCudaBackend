@@ -20,6 +20,8 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
     const torch::Tensor& VPM,
     const torch::Tensor& cam_position,
     const torch::Tensor& gaze_position,
+    const torch::Tensor& render_mask,
+    const torch::Tensor& render_mask_area_table,
     const int K,
     const int active_sh_bases,
     const int width,
@@ -34,7 +36,7 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
     const int total_sh_bases = sh_rest.size(1);
     const torch::TensorOptions float_options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
     const torch::TensorOptions byte_options = torch::TensorOptions().dtype(torch::kByte).device(torch::kCUDA);
-    torch::Tensor image = to_chw ? torch::empty({3, height, width}, float_options) : torch::empty({height, width, 3}, float_options);
+    torch::Tensor image = to_chw ? torch::zeros({3, height, width}, float_options) : torch::zeros({height, width, 3}, float_options);
     torch::Tensor depth = torch::empty({height, width}, float_options);
     torch::Tensor per_primitive_buffers = torch::empty({0}, byte_options);
     torch::Tensor per_tile_buffers = torch::empty({0}, byte_options);
@@ -59,6 +61,8 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
         image.data_ptr<float>(),
         depth.data_ptr<float>(),
+        render_mask.data_ptr<uint>(),
+        render_mask_area_table.data_ptr<uint>(),
         K,
         n_primitives,
         active_sh_bases,

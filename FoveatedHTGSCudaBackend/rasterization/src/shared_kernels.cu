@@ -11,6 +11,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint4* primitive_screen_bounds,
         KeyT* instance_keys,
         uint* instance_primitive_indices,
+        const uint* render_mask,
         const uint grid_width,
         const uint n_primitives)
     {
@@ -21,6 +22,10 @@ namespace htgs::rasterization::shared_kernels {
         for (uint y = screen_bounds.z; y < screen_bounds.w; ++y) {
             for (uint x = screen_bounds.x; x < screen_bounds.y; ++x) {
                 const KeyT tile_idx = y * grid_width + x;
+                const int mask_byte_idx = tile_idx / 32;
+                const int mask_bit_idx = tile_idx % 32;
+                if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+
                 instance_keys[offset] = tile_idx;
                 instance_primitive_indices[offset] = primitive_idx;
                 offset++;
@@ -35,6 +40,7 @@ namespace htgs::rasterization::shared_kernels {
         const float* primitive_depths,
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
+        const uint* render_mask,
         const uint grid_width,
         const uint n_primitives)
     {
@@ -46,6 +52,10 @@ namespace htgs::rasterization::shared_kernels {
         for (uint y = screen_bounds.z; y < screen_bounds.w; ++y) {
             for (uint x = screen_bounds.x; x < screen_bounds.y; ++x) {
                 const uint64_t tile_idx = y * grid_width + x;
+                const int mask_byte_idx = tile_idx / 32;
+                const int mask_bit_idx = tile_idx % 32;
+                if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+
                 instance_keys[offset] = (tile_idx << 32) | depth_key;
                 instance_primitive_indices[offset] = primitive_idx;
                 offset++;
@@ -95,12 +105,47 @@ namespace htgs::rasterization::shared_kernels {
     }
 
     template __global__ void create_instances_cu<uint>(
-        const uint*, const uint*, const uint4*, uint*, uint*, const uint, const uint);
+        const uint*, const uint*, const uint4*, uint*, uint*, const uint*, const uint, const uint);
     template __global__ void create_instances_cu<ushort>(
-        const uint*, const uint*, const uint4*, ushort*, uint*, const uint, const uint);
+        const uint*, const uint*, const uint4*, ushort*, uint*, const uint*, const uint, const uint);
     template __global__ void extract_instance_ranges_cu<uint>(
         const uint*, uint2*, const uint);
     template __global__ void extract_instance_ranges_cu<ushort>(
         const ushort*, uint2*, const uint);
 
+
+    __global__ void fill_tile_index_num_tiles(
+        uint* tile_index_map_num_tiles,
+        const uint* tile_mask,
+        const uint num_tiles_total
+    ) {
+        const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
+        if (tile_idx >= num_tiles_total) return;
+
+        const uint mask_byte_idx = tile_idx / 32;
+        const uint mask_bit_idx = tile_idx % 32;
+
+        // TODO: Needs to be adapted for multi-resolution tiles
+        if ((tile_mask[mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
+            tile_index_map_num_tiles[tile_idx] = 1;
+        } else {
+            tile_index_map_num_tiles[tile_idx] = 0;
+        }
+    }
+
+    __global__ void build_tile_index_map(
+        uint* tile_index_map,
+        const uint* tile_index_map_num_tiles,
+        const uint* tile_index_map_offsets,
+        const uint num_tiles_total
+    ) {
+        const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
+        if (tile_idx >= num_tiles_total) return;
+
+        // TODO: Needs to be adapted for multi-resolution tiles
+        if (tile_index_map_num_tiles[tile_idx] > 0) {
+            const uint idx = tile_idx == 0 ? 0 : tile_index_map_offsets[tile_idx - 1];
+            tile_index_map[idx] = tile_idx;
+        }
+    }
 }

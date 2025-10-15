@@ -12,6 +12,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint4* primitive_screen_bounds,
         KeyT* instance_keys,
         uint* instance_primitive_indices,
+        const uint* render_mask,
         const uint grid_width,
         const uint n_primitives);
 
@@ -22,6 +23,7 @@ namespace htgs::rasterization::shared_kernels {
         const float* primitive_depths,
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
+        const uint* render_mask,
         const uint grid_width,
         const uint n_primitives);
 
@@ -36,4 +38,17 @@ namespace htgs::rasterization::shared_kernels {
         uint2* tile_instance_ranges,
         const uint n_instances);
 
+
+    __global__ void fill_tile_index_num_tiles(
+        uint* tile_index_map_num_tiles,
+        const uint* tile_mask,
+        const uint num_tiles_total
+    );
+
+    __global__ void build_tile_index_map(
+        uint* tile_index_map,
+        const uint* tile_index_map_num_tiles,
+        const uint* tile_index_map_offsets,
+        const uint num_tiles_total
+    );
 }

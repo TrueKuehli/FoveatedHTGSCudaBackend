@@ -57,6 +57,7 @@ __forceinline__ __device__ bool transform_and_cull(
     float4& VPMT2,
     float4& VPMT4,
     float& z,
+    const uint* render_mask_area_table,
     const uint primitive_idx,
     const uint grid_width,
     const uint grid_height,
@@ -114,8 +115,24 @@ __forceinline__ __device__ bool transform_and_cull(
         min(grid_height, static_cast<uint>(max(0, __float2int_ru((center_y + extent_y + 0.5f) / tile_height)))) // y_max
     );
 
+    // get number of potentially influenced tiles via summed area table
+    // assume bounding box A - B
+    //                     |   |
+    //                     C - D
+    const uint4 area_table_indices = make_uint4(
+        screen_bounds.x + (grid_width + 1) * screen_bounds.z,  // A
+        screen_bounds.y + (grid_width + 1) * screen_bounds.z,  // B
+        screen_bounds.x + (grid_width + 1) * screen_bounds.w,  // C
+        screen_bounds.y + (grid_width + 1) * screen_bounds.w   // D
+    );
+
     // compute number of potentially influenced tiles
-    n_touched_tiles = (screen_bounds.y - screen_bounds.x) * (screen_bounds.w - screen_bounds.z);
+    // n_tiles = area(D) + area(A) - area(B) - area(C)
+    n_touched_tiles = render_mask_area_table[area_table_indices.w]
+                    + render_mask_area_table[area_table_indices.x]
+                    - render_mask_area_table[area_table_indices.y]
+                    - render_mask_area_table[area_table_indices.z];
+
     return n_touched_tiles == 0;
 }
 

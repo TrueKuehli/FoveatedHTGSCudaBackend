@@ -43,6 +43,8 @@ void htgs::rasterization::hybrid_blend::inference(
     const float2* gaze_position,
     float* image,
     float* depth,
+    const uint* render_mask,
+    const uint* render_mask_area_table,
     const int K,
     const int n_primitives,
     const int active_sh_bases,
@@ -82,6 +84,31 @@ void htgs::rasterization::hybrid_blend::inference(
     }
     else cudaMemset(per_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles);
 
+    // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
+    shared_kernels::fill_tile_index_num_tiles<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
+        per_tile_buffers.tile_index_map_num_tiles,
+        render_mask,
+        n_tiles
+    );
+    CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles")
+    cub::DeviceScan::InclusiveSum(
+        per_tile_buffers.cub_workspace, per_tile_buffers.cub_workspace_size,
+        per_tile_buffers.tile_index_map_num_tiles, per_tile_buffers.tile_index_map_offsets,
+        n_tiles
+    );
+    CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
+    shared_kernels::build_tile_index_map<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
+        per_tile_buffers.tile_index_map,
+        per_tile_buffers.tile_index_map_num_tiles,
+        per_tile_buffers.tile_index_map_offsets,
+        n_tiles
+    );
+    CHECK_CUDA(config::debug_inference, "build_tile_index_map")
+
+    uint num_active_tiles;
+    cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles - 1, sizeof(uint), cudaMemcpyDeviceToHost);
+    CHECK_CUDA(config::debug_inference, "Fetch num_active_tiles")
+
     kernels::inference::preprocess_cu<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
         positions,
         scales,
@@ -96,6 +123,7 @@ void htgs::rasterization::hybrid_blend::inference(
         per_primitive_buffers.VPMT4,
         per_primitive_buffers.MT3,
         per_primitive_buffers.rgba,
+        render_mask_area_table,
         n_primitives,
         grid.x,
         grid.y,
@@ -138,6 +166,7 @@ void htgs::rasterization::hybrid_blend::inference(
             per_primitive_buffers.screen_bounds,
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
+            render_mask,
             grid.x,
             n_primitives
         );
@@ -165,7 +194,9 @@ void htgs::rasterization::hybrid_blend::inference(
             CHECK_CUDA(config::debug_inference, "extract_instance_ranges")
         }
 
-        blend_k_templated(grid, block, K,
+        const dim3 blend_grid(num_active_tiles, 1, 1);
+        blend_k_templated(blend_grid, block, K,
+            per_tile_buffers.tile_index_map,
             per_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
             per_primitive_buffers.VPMT1,

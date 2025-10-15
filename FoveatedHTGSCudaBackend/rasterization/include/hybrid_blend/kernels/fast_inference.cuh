@@ -22,6 +22,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         float4* primitive_VPMT4,
         float4* primitive_MT3,
         float4* primitive_rgba,
+        const uint* render_mask_area_table,
         const uint n_primitives,
         const uint grid_width,
         const uint grid_height,
@@ -49,6 +50,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             scales, rotations,
             position_world, opacity, M3,
             n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z,
+            render_mask_area_table,
             primitive_idx, grid_width, grid_height, config::tile_width, config::tile_height,
             near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
         )) return;
@@ -78,6 +80,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
 
     template <int K>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
+        const uint* tile_index_map,
         const uint2* tile_instance_ranges,
         const uint* instance_primitive_indices,
         const float4* primitive_VPMT1,
@@ -92,10 +95,13 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const bool output_chw)
     {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
-        const dim3 group_index = block.group_index();
+        const uint group_index = block.group_index().x;
+        const uint true_group_index = tile_index_map[group_index];
+        const dim3 group_index_2d(true_group_index % grid_width, true_group_index / grid_width, 0);
+
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
-        const uint2 pixel_coords = make_uint2(group_index.x * config::tile_width + thread_index.x, group_index.y * config::tile_height + thread_index.y);
+        const uint2 pixel_coords = make_uint2(group_index_2d.x * config::tile_width + thread_index.x, group_index_2d.y * config::tile_height + thread_index.y);
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
         const float pixel_x = __uint2float_rn(pixel_coords.x);
         const float pixel_y = __uint2float_rn(pixel_coords.y);
@@ -116,7 +122,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             depths_core[i] = __FLT_MAX__;
         }
         // collaborative loading and processing
-        const uint2 tile_range = tile_instance_ranges[group_index.y * grid_width + group_index.x];
+        const uint2 tile_range = tile_instance_ranges[true_group_index];
         for (int n_points_remaining = tile_range.y - tile_range.x, current_fetch_idx = tile_range.x + thread_rank; n_points_remaining > 0; n_points_remaining -= config::block_size_blend, current_fetch_idx += config::block_size_blend) {
             block.sync();
             if (current_fetch_idx < tile_range.y) {

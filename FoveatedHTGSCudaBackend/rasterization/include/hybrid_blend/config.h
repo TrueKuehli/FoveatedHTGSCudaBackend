@@ -17,6 +17,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF float min_alpha_threshold_core_rcp = 20.0f;
     DEF float min_alpha_threshold_core = 1.0f / min_alpha_threshold_core_rcp; // 0.05
     // block size constants
+    DEF int block_size_create_tile_index_map = 256;
     DEF int block_size_preprocess = 256;
     DEF int block_size_create_instances = 256;
     DEF int block_size_extract_instance_ranges = 256;

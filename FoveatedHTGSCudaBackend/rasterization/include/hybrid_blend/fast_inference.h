@@ -20,6 +20,8 @@ namespace htgs::rasterization::hybrid_blend {
         const float3* cam_position,
         const float2* gaze_position,
         float* image,
+        const uint* render_mask,
+        const uint* render_mask_area_table,
         const int K,
         const int n_primitives,
         const int active_sh_bases,
