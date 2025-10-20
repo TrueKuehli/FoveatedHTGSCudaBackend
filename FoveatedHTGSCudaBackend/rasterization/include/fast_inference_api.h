@@ -17,6 +17,7 @@ namespace htgs::rasterization {
         const torch::Tensor& gaze_position,
         const torch::Tensor& render_mask,
         const torch::Tensor& render_mask_area_table,
+        const torch::Tensor& fovea_mask_area_table,
         const int K,
         const int active_sh_bases,
         const int width,

@@ -13,8 +13,10 @@ namespace htgs::rasterization::shared_kernels {
         KeyT* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
+        const uint2 gaze_position_tiles,
         const uint grid_width,
-        const uint n_primitives);
+        const uint n_primitives,
+        const uint foveation_radius_tiles);
 
     __global__ void create_instances_cu(
         const uint* primitive_n_touched_tiles,
@@ -24,8 +26,10 @@ namespace htgs::rasterization::shared_kernels {
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
+        const uint2 gaze_position_tiles,
         const uint grid_width,
-        const uint n_primitives);
+        const uint n_primitives,
+        const uint foveation_radius_tiles);
 
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(
@@ -42,13 +46,18 @@ namespace htgs::rasterization::shared_kernels {
     __global__ void fill_tile_index_num_tiles(
         uint* tile_index_map_num_tiles,
         const uint* tile_mask,
-        const uint num_tiles_total
+        const uint2 gaze_position_tiles,
+        const uint num_tiles_total,
+        const uint grid_width,
+        const uint foveation_radius,
+        const uint num_small_tiles
     );
 
     __global__ void build_tile_index_map(
         uint* tile_index_map,
         const uint* tile_index_map_num_tiles,
         const uint* tile_index_map_offsets,
-        const uint num_tiles_total
+        const uint num_tiles_total,
+        const uint num_small_tiles
     );
 }

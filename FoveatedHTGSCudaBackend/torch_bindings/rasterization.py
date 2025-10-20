@@ -12,6 +12,7 @@ class RasterizerSettings(NamedTuple):
     gaze_position: torch.Tensor  # gaze position in screen space
     render_mask: torch.Tensor  # precomputed mask for culling invisible tiles
     render_mask_area_table: torch.Tensor  # precomputed table for culling invisible tiles
+    fovea_mask_area_table: torch.Tensor  # precomputed table for the shape of the sharp foveated area
     K: int  # only used for HYBRID_BLEND and ALPHA_BLEND_FIRST_K
     active_sh_bases: int  # number of spherical harmonics bases to use for color computation
     width: int
@@ -28,6 +29,7 @@ class RasterizerSettings(NamedTuple):
             self.gaze_position,
             self.render_mask,
             self.render_mask_area_table,
+            self.fovea_mask_area_table,
             self.K,
             self.active_sh_bases,
             self.width,

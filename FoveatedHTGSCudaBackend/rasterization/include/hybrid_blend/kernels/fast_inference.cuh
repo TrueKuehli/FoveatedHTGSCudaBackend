@@ -23,11 +23,13 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         float4* primitive_MT3,
         float4* primitive_rgba,
         const uint* render_mask_area_table,
+        const int* fovea_mask_area_table,
         const uint n_primitives,
         const uint grid_width,
         const uint grid_height,
         const uint active_sh_bases,
         const uint total_sh_bases,
+        const uint2 gaze_position,
         const float near_plane,
         const float far_plane,
         const float scale_modifier)
@@ -50,13 +52,14 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             scales, rotations,
             position_world, opacity, M3,
             n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z,
-            render_mask_area_table,
+            render_mask_area_table, fovea_mask_area_table,
             primitive_idx, grid_width, grid_height, config::tile_width, config::tile_height,
+            config::foveation_radius_tiles, gaze_position,
             near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
         )) return;
 
         // write intermediate results
-        primitive_n_touched_tiles[primitive_idx] = n_touched_tiles;
+        primitive_n_touched_tiles[primitive_idx] = min(grid_width*grid_height, static_cast<uint>(max(static_cast<int>(n_touched_tiles), 0)));
         primitive_screen_bounds[primitive_idx] = screen_bounds;
         primitive_VPMT1[primitive_idx] = VPMT1;
         primitive_VPMT2[primitive_idx] = VPMT2;
@@ -75,7 +78,6 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             total_sh_bases
         );
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
-
     }
 
     template <int K>
@@ -215,7 +217,6 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
 
     __global__ void __launch_bounds__(config::gaze_visualization_size) visualize_gaze(
         float* image,
-        const float2* gaze_position,
         const uint width,
         const uint height,
         const bool output_chw
@@ -229,8 +230,8 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             if (x_off * x_off + y_off * y_off > (config::gaze_visualization_width / 2) * (config::gaze_visualization_width / 2)) return;
         }
 
-        const int x = static_cast<int>(gaze_position->x) + x_off;
-        const int y = static_cast<int>(gaze_position->y) + y_off;
+        const int x = static_cast<int>(c_gaze_position_cuda.x) + x_off;
+        const int y = static_cast<int>(c_gaze_position_cuda.y) + y_off;
         if (x < 0 || x >= width || y < 0 || y >= height) return;
 
         const int pixel_idx = width * y + x;

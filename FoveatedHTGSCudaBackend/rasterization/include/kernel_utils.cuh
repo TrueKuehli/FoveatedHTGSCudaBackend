@@ -10,6 +10,7 @@
 __device__ __constant__ float4 c_M3;
 __device__ __constant__ float4 c_VPM[4];
 __device__ __constant__ float3 c_cam_position;
+__device__ __constant__ float2 c_gaze_position_cuda;
 
 struct Mat3x3 {
     float r11, r12, r13;
@@ -26,6 +27,24 @@ __device__ void swap(
     a = b;
     b = temp;
 }
+
+
+__forceinline__ __device__ bool is_in_fovea(
+    const uint tile_idx,
+    const uint grid_width,
+    const uint2 gaze_position_tiles,
+    const uint radius)
+{
+    const int2 tile_coords = make_int2(
+        tile_idx % grid_width,
+        tile_idx / grid_width
+    );
+    const int2 to_gaze = tile_coords - make_int2(gaze_position_tiles.x, gaze_position_tiles.y);
+    const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
+
+    return squared_distance_to_gaze < radius * radius;
+}
+
 
 __forceinline__ __device__ Mat3x3 convert_quaterion_to_rotation_matrix(
     const float4& quaternion)
@@ -58,11 +77,14 @@ __forceinline__ __device__ bool transform_and_cull(
     float4& VPMT4,
     float& z,
     const uint* render_mask_area_table,
+    const int* fovea_mask_area_table,
     const uint primitive_idx,
     const uint grid_width,
     const uint grid_height,
     const uint tile_width,
     const uint tile_height,
+    const uint foveation_radius_tiles,
+    const uint2 gaze_position,
     const float near_plane,
     const float far_plane,
     const float min_alpha_threshold_rcp,
@@ -107,12 +129,24 @@ __forceinline__ __device__ bool transform_and_cull(
     const float center_y = dot(f, VPMT2 * VPMT4);
     const float extent_y = sqrtf(fmaxf(center_y * center_y - dot(f, VPMT2 * VPMT2), 0.0f));
 
-    // compute screen-space bounding box in pixel coordinates (+0.5 to account for half-pixel shift in V)
+    // compute screen-space bounding box in tile coordinates (+0.5 to account for half-pixel shift in V)
     screen_bounds = make_uint4(
         min(grid_width, static_cast<uint>(max(0, __float2int_rd((center_x - extent_x + 0.5f) / tile_width)))), // x_min
         min(grid_width, static_cast<uint>(max(0, __float2int_ru((center_x + extent_x + 0.5f) / tile_width)))), // x_max
         min(grid_height, static_cast<uint>(max(0, __float2int_rd((center_y - extent_y + 0.5f) / tile_height)))), // y_min
         min(grid_height, static_cast<uint>(max(0, __float2int_ru((center_y + extent_y + 0.5f) / tile_height)))) // y_max
+    );
+
+    const int foveation_diameter_tiles = 2 * foveation_radius_tiles;
+    const int2 mask_top_left = make_int2(
+        static_cast<int>(gaze_position.x) - foveation_radius_tiles,
+        static_cast<int>(gaze_position.y) - foveation_radius_tiles
+    );
+    const uint4 foveation_table_bounds = make_uint4(
+        min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.x) - mask_top_left.x)), // x_min
+        min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.y) - mask_top_left.x)), // x_max
+        min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.z) - mask_top_left.y)), // y_min
+        min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.w) - mask_top_left.y))  // y_max
     );
 
     // get number of potentially influenced tiles via summed area table
@@ -128,10 +162,26 @@ __forceinline__ __device__ bool transform_and_cull(
 
     // compute number of potentially influenced tiles
     // n_tiles = area(D) + area(A) - area(B) - area(C)
+    // This may overestimate the actual amount (as tiles masked by the render mask are not excluded from the fovea mask)
+    //   but this is acceptable as it only leads to some redundant work
+    // TODO: We could compare performance with re-calculating the summed area tables each frame
+    // TODO: On modern GPUs, atomic adds are apparently very performant, so we could try instance creation that way, and compare performance
     n_touched_tiles = render_mask_area_table[area_table_indices.w]
                     + render_mask_area_table[area_table_indices.x]
                     - render_mask_area_table[area_table_indices.y]
                     - render_mask_area_table[area_table_indices.z];
+    if (foveation_table_bounds.y != foveation_table_bounds.x && foveation_table_bounds.w != foveation_table_bounds.z) {
+        const uint4 fovea_table_indices = make_uint4(
+            foveation_table_bounds.x + (foveation_diameter_tiles + 1) * foveation_table_bounds.z, // A
+            foveation_table_bounds.y + (foveation_diameter_tiles + 1) * foveation_table_bounds.z, // B
+            foveation_table_bounds.x + (foveation_diameter_tiles + 1) * foveation_table_bounds.w, // C
+            foveation_table_bounds.y + (foveation_diameter_tiles + 1) * foveation_table_bounds.w  // D
+        );
+        n_touched_tiles += fovea_mask_area_table[fovea_table_indices.w]
+                         + fovea_mask_area_table[fovea_table_indices.x]
+                         - fovea_mask_area_table[fovea_table_indices.y]
+                         - fovea_mask_area_table[fovea_table_indices.z];
+    }
 
     return n_touched_tiles == 0;
 }

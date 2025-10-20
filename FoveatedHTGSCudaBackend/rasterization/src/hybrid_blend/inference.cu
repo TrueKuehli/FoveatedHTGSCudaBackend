@@ -45,6 +45,7 @@ void htgs::rasterization::hybrid_blend::inference(
     float* depth,
     const uint* render_mask,
     const uint* render_mask_area_table,
+    const int* fovea_mask_area_table,
     const int K,
     const int n_primitives,
     const int active_sh_bases,
@@ -60,11 +61,18 @@ void htgs::rasterization::hybrid_blend::inference(
     cudaMemcpyToSymbol(c_M3, M + 2, sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_VPM, VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_cam_position, cam_position, sizeof(float3), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_gaze_position_cuda, gaze_position, sizeof(float2), 0, cudaMemcpyHostToDevice);
 
     const dim3 grid(div_round_up(width, config::tile_width), div_round_up(height, config::tile_height), 1);
     const dim3 block(config::tile_width, config::tile_height, 1);
     const int n_tiles = grid.x * grid.y;
     const int end_bit = extract_end_bit(n_tiles);
+
+    // Round gaze to nearest tile (top left corner of tile)
+    const uint2 gaze_position_tiles = make_uint2(
+        static_cast<uint>(max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position->x) + config::tile_width / 2) / config::tile_width))),
+        static_cast<uint>(max(0, min(static_cast<int>(grid.y - 1), (static_cast<int>(gaze_position->y) + config::tile_width / 2) / config::tile_height)))
+    );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
     char* per_primitive_buffers_blob = per_primitive_buffers_func(required<PerPrimitiveBuffers>(n_primitives, store_rgba, store_rgb_clamp_info));
@@ -85,28 +93,34 @@ void htgs::rasterization::hybrid_blend::inference(
     else cudaMemset(per_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles);
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
+    // TODO: Does putting this section on a separate stream improve performance?
     shared_kernels::fill_tile_index_num_tiles<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
         per_tile_buffers.tile_index_map_num_tiles,
         render_mask,
-        n_tiles
+        gaze_position_tiles,
+        n_tiles,  // n_tiles_large
+        grid.x, // grid_large.x,
+        config::foveation_radius_tiles,
+        config::num_small_tiles_per_large_tile
     );
     CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles")
     cub::DeviceScan::InclusiveSum(
         per_tile_buffers.cub_workspace, per_tile_buffers.cub_workspace_size,
         per_tile_buffers.tile_index_map_num_tiles, per_tile_buffers.tile_index_map_offsets,
-        n_tiles
+        n_tiles // n_tiles_large
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
     shared_kernels::build_tile_index_map<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
         per_tile_buffers.tile_index_map,
         per_tile_buffers.tile_index_map_num_tiles,
         per_tile_buffers.tile_index_map_offsets,
-        n_tiles
+        n_tiles, // n_tiles_large,
+        config::num_small_tiles_per_large_tile
     );
     CHECK_CUDA(config::debug_inference, "build_tile_index_map")
 
     uint num_active_tiles;
-    cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles - 1, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles/*n_tiles_large*/ - 1, sizeof(uint), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch num_active_tiles")
 
     kernels::inference::preprocess_cu<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
@@ -124,11 +138,13 @@ void htgs::rasterization::hybrid_blend::inference(
         per_primitive_buffers.MT3,
         per_primitive_buffers.rgba,
         render_mask_area_table,
+        fovea_mask_area_table,
         n_primitives,
         grid.x,
         grid.y,
         active_sh_bases,
         total_sh_bases,
+        gaze_position_tiles,
         near_plane,
         far_plane,
         scale_modifier
@@ -160,6 +176,12 @@ void htgs::rasterization::hybrid_blend::inference(
     int instance_primitive_indices_selector;
     std::visit([&](auto& per_instance_buffers) {
         using KeyT = std::remove_reference_t<decltype(*per_instance_buffers.keys.Current())>;
+
+        // Ensure random initialized keys cannot overlap with actual valid keys
+        cudaMemset(per_instance_buffers.keys.Current(), 255, sizeof(KeyT) * n_instances);
+        // compute-sanitizer will complain if the following isn't also executed
+        // cudaMemset(per_instance_buffers.primitive_indices.Current(), 255, sizeof(uint) * n_instances);
+
         shared_kernels::create_instances_cu<KeyT><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
             per_primitive_buffers.n_touched_tiles,
             per_primitive_buffers.offset,
@@ -167,8 +189,10 @@ void htgs::rasterization::hybrid_blend::inference(
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
             render_mask,
+            gaze_position_tiles,
             grid.x,
-            n_primitives
+            n_primitives,
+            config::foveation_radius_tiles
         );
         CHECK_CUDA(config::debug_inference, "create_instances")
 
@@ -221,7 +245,6 @@ void htgs::rasterization::hybrid_blend::inference(
     const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
     htgs::rasterization::hybrid_blend::kernels::inference::visualize_gaze<<<dot_grid, dot_block>>>(
         image,
-        gaze_position,
         width,
         height,
         to_chw
