@@ -234,6 +234,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             per_primitive_buffers.MT3,
             per_primitive_buffers.rgba,
             image,
+            gaze_position_tiles,
             width,
             height,
             grid_large.x,

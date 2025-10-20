@@ -91,6 +91,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         const float4* primitive_rgba,
         float* image,
         float* depths,
+        const uint2 gaze_position_tiles,
         const uint width,
         const uint height,
         const uint grid_width,
@@ -104,16 +105,18 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
         const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
         const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
+        const bool is_lowres_tile = !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::foveation_radius_tiles);
+        const bool is_blended_tile = !is_lowres_tile && !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::blend_radius_tiles);
 
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
         const uint2 pixel_coords = make_uint2(
-            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x,
-            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y
+            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x * (is_lowres_tile ? config::tile_stride_x : 1),
+            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y * (is_lowres_tile ? config::tile_stride_y : 1)
         );
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
-        const float pixel_x = __uint2float_rn(pixel_coords.x);
-        const float pixel_y = __uint2float_rn(pixel_coords.y);
+        const float pixel_x = __uint2float_rn(pixel_coords.x) + (is_lowres_tile ? 0.5f : 0.0f);
+        const float pixel_y = __uint2float_rn(pixel_coords.y) + (is_lowres_tile ? 0.5f : 0.0f);
         // setup shared memory
         __shared__ float4 collected_VPMT1[config::block_size_blend], collected_VPMT2[config::block_size_blend], collected_VPMT4[config::block_size_blend], collected_MT3[config::block_size_blend];
         __shared__ float3 collected_rgb[config::block_size_blend];
@@ -217,20 +220,89 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
             }
             if (!use_median_depth) depth_pixel = (total_alpha > 0.0f) ? depth_pixel / total_alpha : 0.0f;
             // store results
-            const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-            if (output_chw) {
-                const int n_pixels = width * height;
-                image[pixel_idx] = __saturatef(rgb_pixel.x);
-                image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+            if (is_lowres_tile) {
+                for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
+                    for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
+                        const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
+                        if (output_chw) {
+                            const int n_pixels = width * height;
+                            image[pixel_idx] = __saturatef(rgb_pixel.x);
+                            image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                            image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                        } else {
+                            const int base_idx = 3 * pixel_idx;
+                            image[base_idx] = __saturatef(rgb_pixel.x);
+                            image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                            image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                        }
+                        depths[pixel_idx] = depth_pixel;
+                    }
+                }
+            } else {
+                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+                if (output_chw) {
+                    const int n_pixels = width * height;
+                    image[pixel_idx] = __saturatef(rgb_pixel.x);
+                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                } else {
+                    const int base_idx = 3 * pixel_idx;
+                    image[base_idx] = __saturatef(rgb_pixel.x);
+                    image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                    image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                }
+                depths[pixel_idx] = depth_pixel;
             }
-            else {
-                const int base_idx = 3 * pixel_idx;
-                image[base_idx] = __saturatef(rgb_pixel.x);
-                image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                image[base_idx + 2] = __saturatef(rgb_pixel.z);
+
+            if (is_blended_tile) {
+                // Get the pixel coordinates of the top left pixel of each blending group
+                const uint2 top_left_pixel_coords = make_uint2(
+                    large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x / config::tile_stride_x * config::tile_stride_x,
+                    large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y / config::tile_stride_y * config::tile_stride_y
+                );
+
+                cooperative_groups::coalesced_group coalesced = cooperative_groups::coalesced_threads();
+                coalesced.sync();  // Ensure all threads have written their pixel value
+
+                // Calculate average pixel color for blending
+                float3 average_rgb_pixel = make_float3(0.0f);
+                for (uint x = 0; x < min(config::tile_stride_x, width - top_left_pixel_coords.x); x++) {
+                    for (uint y = 0; y < min(config::tile_stride_y, height - top_left_pixel_coords.y); y++) {
+                        const int pixel_idx = width * (top_left_pixel_coords.y + y) + (top_left_pixel_coords.x + x);
+                        if (output_chw) {
+                            const int n_pixels = width * height;
+                            average_rgb_pixel.x += image[pixel_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.y += image[n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.z += image[2 * n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
+                        } else {
+                            const int base_idx = 3 * pixel_idx;
+                            average_rgb_pixel.x += image[base_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.y += image[base_idx + 1] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.z += image[base_idx + 2] / config::num_small_tiles_per_large_tile;
+                        }
+                    }
+                }
+
+                coalesced.sync();  // Ensure all threads have computed the average
+                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+
+                // Determine blending factor
+                const float2 dist_from_gaze = c_gaze_position_cuda - make_float2(pixel_coords.x, pixel_coords.y);
+                const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
+
+                // Write the average color back to the pixels in the tile
+                if (output_chw) {
+                    const int n_pixels = width * height;
+                    image[pixel_idx] = __saturatef(image[pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[n_pixels + pixel_idx] = __saturatef(image[n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[2 * n_pixels + pixel_idx] = __saturatef(image[2 * n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
+                } else {
+                    const int base_idx = 3 * pixel_idx;
+                    image[base_idx] = __saturatef(image[base_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[base_idx + 1] = __saturatef(image[base_idx + 1] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[base_idx + 2] = __saturatef(image[base_idx + 2] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
+                }
             }
-            depths[pixel_idx] = depth_pixel;
         }
     }
 
