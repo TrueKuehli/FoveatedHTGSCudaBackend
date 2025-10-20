@@ -86,24 +86,32 @@ namespace htgs::rasterization::hybrid_blend {
     struct PerTileBuffers {
         size_t cub_workspace_size;
         char* cub_workspace;
-        uint2* instance_ranges;
         uint* tile_index_map;
         uint* tile_index_map_num_tiles;
         uint* tile_index_map_offsets;
 
-        static PerTileBuffers from_blob(char*& blob, size_t n_tiles) {
+        static PerTileBuffers from_blob(char*& blob, size_t n_tiles_large) {
             PerTileBuffers buffers;
-            obtain(blob, buffers.instance_ranges, n_tiles, 128);
-            obtain(blob, buffers.tile_index_map, n_tiles, 128);
-            obtain(blob, buffers.tile_index_map_num_tiles, n_tiles, 128);
-            obtain(blob, buffers.tile_index_map_offsets, n_tiles, 128);
+            obtain(blob, buffers.tile_index_map, n_tiles_large, 128);
+            obtain(blob, buffers.tile_index_map_num_tiles, n_tiles_large, 128);
+            obtain(blob, buffers.tile_index_map_offsets, n_tiles_large, 128);
 
             cub::DeviceScan::InclusiveSum(
                 nullptr, buffers.cub_workspace_size,
                 buffers.tile_index_map_num_tiles, buffers.tile_index_map_offsets,
-                n_tiles
+                n_tiles_large
             );
             obtain(blob, buffers.cub_workspace, buffers.cub_workspace_size, 128);
+            return buffers;
+        }
+    };
+
+    struct PerSubTileBuffers {
+        uint2* instance_ranges;
+
+        static PerSubTileBuffers from_blob(char*& blob, size_t n_tiles) {
+            PerSubTileBuffers buffers;
+            obtain(blob, buffers.instance_ranges, n_tiles, 128);
             return buffers;
         }
     };

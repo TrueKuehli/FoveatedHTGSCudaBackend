@@ -60,7 +60,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         image.data_ptr<float>(),
         render_mask.data_ptr<uint>(),
         render_mask_area_table.data_ptr<uint>(),
-        fovea_mask_area_table.data_ptr<int>(),
+        fovea_mask_area_table.data_ptr<uint>(),
         K,
         n_primitives,
         active_sh_bases,

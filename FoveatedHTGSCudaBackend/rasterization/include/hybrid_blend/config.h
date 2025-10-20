@@ -17,8 +17,6 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF float min_alpha_threshold_core_rcp = 20.0f;
     DEF float min_alpha_threshold_core = 1.0f / min_alpha_threshold_core_rcp; // 0.05
 
-    DEF int tile_width = 8;         // FIXME: replace
-    DEF int tile_height = 8;        // FIXME: replace
     DEF int tile_width_small = 8;
     DEF int tile_height_small = 8;
     DEF int tile_width_large = 16;
@@ -28,7 +26,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int num_small_tiles_per_large_tile = tile_stride_x * tile_stride_y;
 
     DEF int foveation_radius = 375; // in pixels
-    DEF int foveation_radius_tiles = (foveation_radius + tile_width - 1) / tile_width; // in tiles
+    DEF int foveation_radius_tiles = (foveation_radius + tile_width_large - 1) / tile_width_large; // in tiles
     DEF int blend_region = 125;     // in pixels
 
     // block size constants
@@ -36,7 +34,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int block_size_preprocess = 256;
     DEF int block_size_create_instances = 256;
     DEF int block_size_extract_instance_ranges = 256;
-    DEF int block_size_blend = tile_width * tile_height;
+    DEF int block_size_blend = tile_width_small * tile_height_small;
 
     DEF int gaze_visualization_width = 13;
     DEF int gaze_visualization_size = gaze_visualization_width * gaze_visualization_width;

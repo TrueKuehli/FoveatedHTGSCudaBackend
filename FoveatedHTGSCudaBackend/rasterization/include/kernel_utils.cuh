@@ -77,7 +77,7 @@ __forceinline__ __device__ bool transform_and_cull(
     float4& VPMT4,
     float& z,
     const uint* render_mask_area_table,
-    const int* fovea_mask_area_table,
+    const uint* fovea_mask_area_table,
     const uint primitive_idx,
     const uint grid_width,
     const uint grid_height,

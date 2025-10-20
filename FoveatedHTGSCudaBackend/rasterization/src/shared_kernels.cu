@@ -16,7 +16,8 @@ namespace htgs::rasterization::shared_kernels {
         const uint2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles)
+        const uint foveation_radius_tiles,
+        const uint num_small_tiles)
     {
         const uint primitive_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (primitive_idx >= n_primitives || primitive_n_touched_tiles[primitive_idx] == 0) return;
@@ -24,23 +25,24 @@ namespace htgs::rasterization::shared_kernels {
         uint offset = (primitive_idx == 0) ? 0 : primitive_offsets[primitive_idx - 1];
         for (uint y = screen_bounds.z; y < screen_bounds.w; ++y) {
             for (uint x = screen_bounds.x; x < screen_bounds.y; ++x) {
-                const KeyT tile_idx = (y * grid_width + x); // * num_small_tiles;
+                const KeyT tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
                 if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea(tile_idx, grid_width, gaze_position_tiles, foveation_radius_tiles)) {
-//                     // Tile is in fovea, so create instances for each small tile
-//                     for (uint i = 0; i < num_small_tiles; ++i) {
-//                         instance_keys[offset] = tile_idx * num_small_tiles + i;
-//                         instance_primitive_indices[offset] = primitive_idx;
-//                         offset++;
-//                     }
+                    // Tile is in fovea, so create instances for each small tile
+                    // TODO: #pragma unroll num_small_tiles
+                    for (uint i = 0; i < num_small_tiles; ++i) {
+                        instance_keys[offset] = tile_idx * num_small_tiles + i;
+                        instance_primitive_indices[offset] = primitive_idx;
+                        offset++;
+                    }
 
                     continue;
                 }
 
-                instance_keys[offset] = tile_idx;
+                instance_keys[offset] = tile_idx * num_small_tiles;
                 instance_primitive_indices[offset] = primitive_idx;
                 offset++;
             }
@@ -58,7 +60,8 @@ namespace htgs::rasterization::shared_kernels {
         const uint2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius)
+        const uint foveation_radius,
+        const uint num_small_tiles)
     {
         const uint primitive_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (primitive_idx >= n_primitives || primitive_n_touched_tiles[primitive_idx] == 0) return;
@@ -67,23 +70,25 @@ namespace htgs::rasterization::shared_kernels {
         const uint64_t depth_key = __float_as_uint(primitive_depths[primitive_idx]);
         for (uint y = screen_bounds.z; y < screen_bounds.w; ++y) {
             for (uint x = screen_bounds.x; x < screen_bounds.y; ++x) {
-                const uint64_t tile_idx = (y * grid_width + x); // * num_small_tiles;
+                const uint64_t tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
                 if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea(tile_idx, grid_width, gaze_position_tiles, foveation_radius)) {
-//                     // Tile is in fovea, so create instances for each small tile
-//                     for (uint i = 0; i < num_small_tiles; ++i) {
-//                         instance_keys[offset] = tile_idx * num_small_tiles + i;
-//                         instance_primitive_indices[offset] = primitive_idx;
-//                         offset++;
-//                     }
+                    // Tile is in fovea, so create instances for each small tile
+                    // TODO: Tighten bounds checks in preprocessing to sub-tile level
+                    // TODO: #pragma unroll num_small_tiles
+                    for (uint i = 0; i < num_small_tiles; ++i) {
+                        instance_keys[offset] = ((tile_idx * num_small_tiles + i) << 32) | depth_key;
+                        instance_primitive_indices[offset] = primitive_idx;
+                        offset++;
+                    }
 
                     continue;
                 }
 
-                instance_keys[offset] = (tile_idx << 32) | depth_key;
+                instance_keys[offset] = ((tile_idx * num_small_tiles) << 32) | depth_key;
                 instance_primitive_indices[offset] = primitive_idx;
                 offset++;
             }
@@ -132,9 +137,9 @@ namespace htgs::rasterization::shared_kernels {
     }
 
     template __global__ void create_instances_cu<uint>(
-        const uint*, const uint*, const uint4*, uint*, uint*, const uint*, const uint2, const uint, const uint, const uint);
+        const uint*, const uint*, const uint4*, uint*, uint*, const uint*, const uint2, const uint, const uint, const uint, const uint);
     template __global__ void create_instances_cu<ushort>(
-        const uint*, const uint*, const uint4*, ushort*, uint*, const uint*, const uint2, const uint, const uint, const uint);
+        const uint*, const uint*, const uint4*, ushort*, uint*, const uint*, const uint2, const uint, const uint, const uint, const uint);
     template __global__ void extract_instance_ranges_cu<uint>(
         const uint*, uint2*, const uint);
     template __global__ void extract_instance_ranges_cu<ushort>(
@@ -160,8 +165,7 @@ namespace htgs::rasterization::shared_kernels {
         if ((tile_mask[mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
             if (is_in_fovea(tile_idx, grid_width, gaze_position_tiles, foveation_radius_tiles)) {
                 // Tiles in the fovea get split into n small tiles
-//                 tile_index_map_num_tiles[tile_idx] = num_small_tiles;
-                tile_index_map_num_tiles[tile_idx] = 0; // Temporarily disable foveated rendering
+                tile_index_map_num_tiles[tile_idx] = num_small_tiles;
             } else {
                 tile_index_map_num_tiles[tile_idx] = 1;
             }
@@ -191,13 +195,12 @@ namespace htgs::rasterization::shared_kernels {
 
         const uint base_idx = tile_idx == 0 ? 0 : tile_index_map_offsets[tile_idx - 1];
         if (tile_index_map_num_tiles[tile_idx] == 1) {
-            tile_index_map[base_idx] = tile_idx;// * num_small_tiles;
+            tile_index_map[base_idx] = tile_idx * num_small_tiles;
         } else {
             // Tile gets split
-//             for (uint i = 0; i < num_small_tiles; ++i) {
-//                 tile_index_map[base_idx + i] = tile_idx * num_small_tiles + i;
-//             }
-            tile_index_map[base_idx] = tile_idx;// * num_small_tiles;  // temporary fix
+            for (uint i = 0; i < num_small_tiles; ++i) {
+                tile_index_map[base_idx + i] = tile_idx * num_small_tiles + i;
+            }
         }
     }
 }

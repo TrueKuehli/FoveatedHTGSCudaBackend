@@ -16,7 +16,8 @@ namespace htgs::rasterization::shared_kernels {
         const uint2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles);
+        const uint foveation_radius_tiles,
+        const uint num_small_tiles);
 
     __global__ void create_instances_cu(
         const uint* primitive_n_touched_tiles,
@@ -29,7 +30,8 @@ namespace htgs::rasterization::shared_kernels {
         const uint2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles);
+        const uint foveation_radius_tiles,
+        const uint num_small_tiles);
 
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(

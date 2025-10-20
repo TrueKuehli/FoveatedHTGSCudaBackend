@@ -23,7 +23,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         float4* primitive_MT3,
         float4* primitive_rgba,
         const uint* render_mask_area_table,
-        const int* fovea_mask_area_table,
+        const uint* fovea_mask_area_table,
         const uint n_primitives,
         const uint grid_width,
         const uint grid_height,
@@ -53,13 +53,13 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
             position_world, opacity, M3,
             n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z,
             render_mask_area_table, fovea_mask_area_table,
-            primitive_idx, grid_width, grid_height, config::tile_width, config::tile_height,
+            primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
             config::foveation_radius_tiles, gaze_position,
             near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
         )) return;
 
         // write intermediate results
-        primitive_n_touched_tiles[primitive_idx] = min(grid_width*grid_height, static_cast<uint>(max(static_cast<int>(n_touched_tiles), 0)));
+        primitive_n_touched_tiles[primitive_idx] = n_touched_tiles;
         primitive_screen_bounds[primitive_idx] = screen_bounds;
         primitive_VPMT1[primitive_idx] = VPMT1;
         primitive_VPMT2[primitive_idx] = VPMT2;
@@ -99,11 +99,17 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x;
         const uint true_group_index = tile_index_map[group_index];
-        const dim3 group_index_2d(true_group_index % grid_width, true_group_index / grid_width, 0);
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
 
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
-        const uint2 pixel_coords = make_uint2(group_index_2d.x * config::tile_width + thread_index.x, group_index_2d.y * config::tile_height + thread_index.y);
+        const uint2 pixel_coords = make_uint2(
+            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x,
+            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y
+        );
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
         const float pixel_x = __uint2float_rn(pixel_coords.x);
         const float pixel_y = __uint2float_rn(pixel_coords.y);
