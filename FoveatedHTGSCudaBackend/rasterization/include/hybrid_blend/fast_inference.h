@@ -20,6 +20,7 @@ namespace htgs::rasterization::hybrid_blend {
         const float3* cam_position,
         const float2* gaze_position,
         float* image,
+        float* image_final,
         const uint* render_mask,
         const uint* render_mask_area_table,
         const uint* fovea_mask_area_table,
@@ -32,6 +33,7 @@ namespace htgs::rasterization::hybrid_blend {
         const float near_plane,
         const float far_plane,
         const float scale_modifier,
-        const bool to_chw);
+        const bool to_chw,
+        const bool blur_periphery);
 
 }

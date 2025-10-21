@@ -292,6 +292,87 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         }
     }
 
+    __global__ void __launch_bounds__(config::block_size_blur) blur_cu(
+        float* image,
+        float* image_blurred,
+        const uint width,
+        const uint height,
+        const uint grid_width,
+        const uint2 gaze_position_tiles,
+        const bool output_chw
+    ) {
+        constexpr float gaussian_kernel_factors[3][3] = {
+            {1.0f, 2.0f, 1.0f},
+            {2.0f, 4.0f, 2.0f},
+            {1.0f, 2.0f, 1.0f}
+        };
+        constexpr float gaussian_factor = 1.0f / 16.0f;
+
+        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+        const dim3 group_index = block.group_index();
+        const dim3 thread_index = block.thread_index();
+        const uint thread_rank = block.thread_rank();
+        const uint large_tile_index = group_index.y / config::tile_stride_y * grid_width + group_index.x / config::tile_stride_x;
+        const bool is_lowres_tile = !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::foveation_radius_tiles);
+
+        const uint2 pixel_coords = make_uint2(
+            group_index.x * config::tile_width_small + thread_index.x,
+            group_index.y * config::tile_height_small + thread_index.y
+        );
+        const bool inside = pixel_coords.x < width && pixel_coords.y < height;
+        if (!inside) return;
+        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+
+        if (is_lowres_tile) {
+            float3 average_rgb_pixel = make_float3(0.0f);
+            #pragma unroll
+            for (int x_off = -1; x_off < 2; x_off++) {
+                #pragma unroll
+                for (int y_off = -1; y_off < 2; y_off++) {
+                    const int sample_x = min(max(int(pixel_coords.x) + x_off, 0), int(width) - 1);
+                    const int sample_y = min(max(int(pixel_coords.y) + y_off, 0), int(height) - 1);
+                    const int sample_idx = width * sample_y + sample_x;
+
+                    if (output_chw) {
+                        const int n_pixels = width * height;
+                        average_rgb_pixel.x += image[sample_idx] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                        average_rgb_pixel.y += image[n_pixels + sample_idx] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                        average_rgb_pixel.z += image[2 * n_pixels + sample_idx] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                    } else {
+                        const int base_idx = 3 * sample_idx;
+                        average_rgb_pixel.x += image[base_idx] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                        average_rgb_pixel.y += image[base_idx + 1] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                        average_rgb_pixel.z += image[base_idx + 2] * gaussian_kernel_factors[x_off + 1][y_off + 1];
+                    }
+                }
+            }
+
+            if (output_chw) {
+                const int n_pixels = width * height;
+                image_blurred[pixel_idx] = __saturatef(average_rgb_pixel.x * gaussian_factor);
+                image_blurred[n_pixels + pixel_idx] = __saturatef(average_rgb_pixel.y * gaussian_factor);
+                image_blurred[2 * n_pixels + pixel_idx] = __saturatef(average_rgb_pixel.z * gaussian_factor);
+            } else {
+                const int base_idx = 3 * pixel_idx;
+                image_blurred[base_idx] = __saturatef(average_rgb_pixel.x * gaussian_factor);
+                image_blurred[base_idx + 1] = __saturatef(average_rgb_pixel.y * gaussian_factor);
+                image_blurred[base_idx + 2] = __saturatef(average_rgb_pixel.z * gaussian_factor);
+            }
+        } else {
+            if (output_chw) {
+                const int n_pixels = width * height;
+                image_blurred[pixel_idx] = image[pixel_idx];
+                image_blurred[n_pixels + pixel_idx] = image[n_pixels + pixel_idx];
+                image_blurred[2 * n_pixels + pixel_idx] = image[2 * n_pixels + pixel_idx];
+            } else {
+                const int base_idx = 3 * pixel_idx;
+                image_blurred[base_idx] = image[base_idx];
+                image_blurred[base_idx + 1] = image[base_idx + 1];
+                image_blurred[base_idx + 2] = image[base_idx + 2];
+            }
+        }
+    }
+
     __global__ void __launch_bounds__(config::gaze_visualization_size) visualize_gaze(
         float* image,
         const uint width,

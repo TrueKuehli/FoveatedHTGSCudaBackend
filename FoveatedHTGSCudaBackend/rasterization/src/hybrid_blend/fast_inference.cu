@@ -42,6 +42,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     const float3* cam_position,
     const float2* gaze_position,
     float* image,
+    float* image_final,
     const uint* render_mask,
     const uint* render_mask_area_table,
     const uint* fovea_mask_area_table,
@@ -54,7 +55,8 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     const float near_plane,
     const float far_plane,
     const float scale_modifier,
-    const bool to_chw)
+    const bool to_chw,
+    const bool blur_periphery)
 {
     cudaMemcpyToSymbol(c_M3, M + 2, sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_VPM, VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
@@ -242,13 +244,25 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         );
         CHECK_CUDA(config::debug_fast_inference, "blend")
 
+        if (blur_periphery) {
+            htgs::rasterization::hybrid_blend::kernels::fast_inference::blur_cu<<<grid, block>>>(
+                image,
+                image_final,
+                width,
+                height,
+                grid_large.x,
+                gaze_position_tiles,
+                to_chw
+            );
+            CHECK_CUDA(config::debug_inference, "blur")
+        }
     }, buffer_variant);
 
     // Draw a red dot at the gaze position for visualization
     const dim3 dot_grid(1, 1, 1);
     const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
     htgs::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
-        image,
+        blur_periphery ? image_final : image,
         width,
         height,
         to_chw

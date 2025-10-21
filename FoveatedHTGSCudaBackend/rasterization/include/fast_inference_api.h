@@ -25,6 +25,7 @@ namespace htgs::rasterization {
         const float near_plane,
         const float far_plane,
         const float scale_modifier,
-        const bool to_chw);
+        const bool to_chw,
+        const bool blur_periphery);
 
 }

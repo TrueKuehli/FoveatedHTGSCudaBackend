@@ -37,6 +37,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int block_size_create_instances = 256;
     DEF int block_size_extract_instance_ranges = 256;
     DEF int block_size_blend = tile_width_small * tile_height_small;
+    DEF int block_size_blur = 256;
 
     DEF int gaze_visualization_width = 13;
     DEF int gaze_visualization_size = gaze_visualization_width * gaze_visualization_width;

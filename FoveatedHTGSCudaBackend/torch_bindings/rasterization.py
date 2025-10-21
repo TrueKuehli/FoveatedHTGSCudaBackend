@@ -56,6 +56,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             settings: RasterizerSettings,
             to_chw: bool,
             use_median_depth: bool,
+            blur_periphery: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         image, depth = _C.render(
             positions,
@@ -67,6 +68,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             *settings.as_tuple(),
             to_chw,
             use_median_depth,
+            blur_periphery,
         )
         depth = depth.unsqueeze(0) if to_chw else depth.unsqueeze(-1)
         return image, depth
@@ -81,6 +83,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             sh_rest: torch.Tensor,
             settings: RasterizerSettings,
             to_chw: bool,
+            blur_periphery: bool,
     ) -> torch.Tensor:
         image = _C_benchmarking.benchmark(
             positions,
@@ -91,5 +94,6 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             sh_rest,
             *settings.as_tuple(),
             to_chw,
+            blur_periphery,
         )
         return image

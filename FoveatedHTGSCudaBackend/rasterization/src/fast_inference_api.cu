@@ -29,7 +29,8 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const float near_plane,
     const float far_plane,
     const float scale_modifier,
-    const bool to_chw)
+    const bool to_chw,
+    const bool blur_periphery)
 {
     const int n_primitives = positions.size(0);
     const int total_sh_bases = sh_rest.size(1);
@@ -42,6 +43,11 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const std::function<char*(size_t)> per_primitive_buffers_func = resize_function_wrapper(per_primitive_buffers);
     const std::function<char*(size_t)> per_tile_buffers_func = resize_function_wrapper(per_tile_buffers);
     const std::function<char*(size_t)> per_instance_buffers_func = resize_function_wrapper(per_instance_buffers);
+
+    // When blurring the periphery, we need an extra image buffer
+    torch::Tensor image_final = blur_periphery ?
+            (to_chw ? torch::empty({3, height, width}, float_options) : torch::empty({height, width, 3}, float_options))
+            : torch::empty({0}, float_options);
 
     hybrid_blend::fast_inference(
         per_primitive_buffers_func,
@@ -58,6 +64,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         reinterpret_cast<const float3*>(cam_position.contiguous().data_ptr<float>()),
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
         image.data_ptr<float>(),
+        blur_periphery ? image_final.data_ptr<float>() : image.data_ptr<float>(),
         render_mask.data_ptr<uint>(),
         render_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>(),
@@ -70,7 +77,8 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         near_plane,
         far_plane,
         scale_modifier,
-        to_chw);
+        to_chw,
+        blur_periphery);
 
     return image;
 }
