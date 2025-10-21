@@ -28,8 +28,9 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int foveation_radius = 375; // in pixels
     DEF int foveation_radius_tiles = (foveation_radius + tile_width_large - 1) / tile_width_large; // in tiles, rounded up
     DEF int blend_width = 125; // in pixels
-    DEF int blend_radius = foveation_radius - blend_width; // in pixels
-    DEF int blend_radius_tiles = blend_radius / tile_width_large; // in tiles, rounded down
+    DEF int blend_radius_raw = foveation_radius - blend_width; // in pixels
+    DEF int blend_radius_tiles = blend_radius_raw / tile_width_large; // in tiles, rounded down
+    DEF int blend_radius = blend_radius_tiles * tile_width_large; // in pixels
 
     // block size constants
     DEF int block_size_create_tile_index_map = 256;

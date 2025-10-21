@@ -254,56 +254,6 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
                         image[base_idx + 2] = __saturatef(rgb_pixel.z);
                     }
                     depths[pixel_idx] = depth_pixel;
-
-                    if (is_blended_tile) {
-                        // Get the pixel coordinates of the top left pixel of each blending group
-                        const uint2 top_left_pixel_coords = make_uint2(
-                            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x / config::tile_stride_x * config::tile_stride_x,
-                            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y / config::tile_stride_y * config::tile_stride_y
-                        );
-
-                        cooperative_groups::coalesced_group coalesced = cooperative_groups::coalesced_threads();
-                        coalesced.sync();  // Ensure all threads have written their pixel value
-
-                        // Calculate average pixel color for blending
-                        float3 average_rgb_pixel = make_float3(0.0f);
-                        for (uint x = 0; x < min(config::tile_stride_x, width - top_left_pixel_coords.x); x++) {
-                            for (uint y = 0; y < min(config::tile_stride_y, height - top_left_pixel_coords.y); y++) {
-                                const int pixel_idx = width * (top_left_pixel_coords.y + y) + (top_left_pixel_coords.x + x);
-                                if (output_chw) {
-                                    const int n_pixels = width * height;
-                                    average_rgb_pixel.x += image[pixel_idx] / config::num_small_tiles_per_large_tile;
-                                    average_rgb_pixel.y += image[n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
-                                    average_rgb_pixel.z += image[2 * n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
-                                } else {
-                                    const int base_idx = 3 * pixel_idx;
-                                    average_rgb_pixel.x += image[base_idx] / config::num_small_tiles_per_large_tile;
-                                    average_rgb_pixel.y += image[base_idx + 1] / config::num_small_tiles_per_large_tile;
-                                    average_rgb_pixel.z += image[base_idx + 2] / config::num_small_tiles_per_large_tile;
-                                }
-                            }
-                        }
-
-                        coalesced.sync();  // Ensure all threads have computed the average
-                        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-
-                        // Determine blending factor
-                        const float2 dist_from_gaze = c_gaze_position_cuda - make_float2(pixel_coords.x, pixel_coords.y);
-                        const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
-
-                        // Write the average color back to the pixels in the tile
-                        if (output_chw) {
-                            const int n_pixels = width * height;
-                            image[pixel_idx] = __saturatef(image[pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                            image[n_pixels + pixel_idx] = __saturatef(image[n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                            image[2 * n_pixels + pixel_idx] = __saturatef(image[2 * n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
-                        } else {
-                            const int base_idx = 3 * pixel_idx;
-                            image[base_idx] = __saturatef(image[base_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                            image[base_idx + 1] = __saturatef(image[base_idx + 1] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                            image[base_idx + 2] = __saturatef(image[base_idx + 2] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
-                        }
-                    }
                 }
             } else {
                 const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
@@ -317,6 +267,56 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
                     image[base_idx] = __saturatef(rgb_pixel.x);
                     image[base_idx + 1] = __saturatef(rgb_pixel.y);
                     image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                }
+            }
+
+            if (is_blended_tile) {
+                // Get the pixel coordinates of the top left pixel of each blending group
+                const uint2 top_left_pixel_coords = make_uint2(
+                    large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x / config::tile_stride_x * config::tile_stride_x,
+                    large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y / config::tile_stride_y * config::tile_stride_y
+                );
+
+                cooperative_groups::coalesced_group coalesced = cooperative_groups::coalesced_threads();
+                coalesced.sync();  // Ensure all threads have written their pixel value
+
+                // Calculate average pixel color for blending
+                float3 average_rgb_pixel = make_float3(0.0f);
+                for (uint x = 0; x < min(config::tile_stride_x, width - top_left_pixel_coords.x); x++) {
+                    for (uint y = 0; y < min(config::tile_stride_y, height - top_left_pixel_coords.y); y++) {
+                        const int pixel_idx = width * (top_left_pixel_coords.y + y) + (top_left_pixel_coords.x + x);
+                        if (output_chw) {
+                            const int n_pixels = width * height;
+                            average_rgb_pixel.x += image[pixel_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.y += image[n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.z += image[2 * n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
+                        } else {
+                            const int base_idx = 3 * pixel_idx;
+                            average_rgb_pixel.x += image[base_idx] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.y += image[base_idx + 1] / config::num_small_tiles_per_large_tile;
+                            average_rgb_pixel.z += image[base_idx + 2] / config::num_small_tiles_per_large_tile;
+                        }
+                    }
+                }
+
+                coalesced.sync();  // Ensure all threads have computed the average
+                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+
+                // Determine blending factor
+                const float2 dist_from_gaze = c_gaze_position_cuda - make_float2(pixel_coords.x, pixel_coords.y);
+                const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
+
+                // Write the average color back to the pixels in the tile
+                if (output_chw) {
+                    const int n_pixels = width * height;
+                    image[pixel_idx] = __saturatef(image[pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[n_pixels + pixel_idx] = __saturatef(image[n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[2 * n_pixels + pixel_idx] = __saturatef(image[2 * n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
+                } else {
+                    const int base_idx = 3 * pixel_idx;
+                    image[base_idx] = __saturatef(image[base_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[base_idx + 1] = __saturatef(image[base_idx + 1] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[base_idx + 2] = __saturatef(image[base_idx + 2] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
                 }
             }
         }
