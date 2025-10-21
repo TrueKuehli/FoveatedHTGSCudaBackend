@@ -17,14 +17,28 @@ void blend_k_templated(
     const dim3& grid,
     const dim3& block,
     const int K,
+    const PeripheryInterpolationMode periphery_mode,
     Args&&... kernel_args)
 {
-    if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-    else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+    switch (periphery_mode) {
+        case PeripheryInterpolationMode::LINEAR:
+            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            break;
+        case PeripheryInterpolationMode::NEAREST:
+        default:
+            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            break;
+    }
 }
 
 void htgs::rasterization::hybrid_blend::fast_inference(
@@ -46,6 +60,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     const uint* render_mask,
     const uint* render_mask_area_table,
     const uint* fovea_mask_area_table,
+    const PeripheryInterpolationMode periphery_mode,
     const int K,
     const int n_primitives,
     const int active_sh_bases,
@@ -226,7 +241,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         }
 
         const dim3 blend_grid(num_active_tiles, 1, 1);
-        blend_k_templated(blend_grid, block, K,
+        blend_k_templated(blend_grid, block, K, periphery_mode,
             per_tile_buffers.tile_index_map,
             per_sub_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
@@ -243,6 +258,17 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             to_chw
         );
         CHECK_CUDA(config::debug_fast_inference, "blend")
+
+        if (periphery_mode == PeripheryInterpolationMode::LINEAR) {
+            htgs::rasterization::hybrid_blend::kernels::fast_inference::interpolate_missing<<<grid, block>>>(
+                image,
+                width,
+                height,
+                grid_large.x,
+                gaze_position_tiles,
+                to_chw
+            );
+        }
 
         if (blur_periphery) {
             htgs::rasterization::hybrid_blend::kernels::fast_inference::blur_cu<<<grid, block>>>(

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "helper_math.h"
+#include "rasterization_utils.h"
 #include <functional>
 
 namespace htgs::rasterization::hybrid_blend {
@@ -24,6 +25,7 @@ namespace htgs::rasterization::hybrid_blend {
         const uint* render_mask,
         const uint* render_mask_area_table,
         const uint* fovea_mask_area_table,
+        const PeripheryInterpolationMode periphery_mode,
         const int K,
         const int n_primitives,
         const int active_sh_bases,

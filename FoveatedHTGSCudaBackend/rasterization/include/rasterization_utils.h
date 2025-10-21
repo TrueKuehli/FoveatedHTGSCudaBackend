@@ -1,5 +1,11 @@
 #pragma once
 
+enum class PeripheryInterpolationMode {
+    NEAREST = 0,
+    LINEAR = 1,
+};
+
+
 inline __host__ int extract_end_bit(
     uint n)
 {

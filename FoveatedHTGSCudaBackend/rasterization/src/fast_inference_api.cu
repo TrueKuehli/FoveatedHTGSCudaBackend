@@ -3,6 +3,7 @@
 
 #include "torch_utils.h"
 #include "helper_math.h"
+#include "rasterization_utils.h"
 #include <torch/extension.h>
 #include <stdexcept>
 #include <functional>
@@ -22,6 +23,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const torch::Tensor& render_mask,
     const torch::Tensor& render_mask_area_table,
     const torch::Tensor& fovea_mask_area_table,
+    const int periphery_interpolation_mode,
     const int K,
     const int active_sh_bases,
     const int width,
@@ -32,6 +34,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const bool to_chw,
     const bool blur_periphery)
 {
+    const PeripheryInterpolationMode periphery_mode = static_cast<PeripheryInterpolationMode>(periphery_interpolation_mode);
     const int n_primitives = positions.size(0);
     const int total_sh_bases = sh_rest.size(1);
     const torch::TensorOptions float_options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
@@ -68,6 +71,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         render_mask.data_ptr<uint>(),
         render_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>(),
+        periphery_mode,
         K,
         n_primitives,
         active_sh_bases,

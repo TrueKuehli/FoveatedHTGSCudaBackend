@@ -1,8 +1,14 @@
+from enum import Enum
 from typing import NamedTuple
 
 import torch
 
 from FoveatedHTGSCudaBackend import _C, _C_benchmarking
+
+
+class PeripheryInterpolationMode(Enum):
+    NEAREST = 0
+    LINEAR = 1
 
 
 class RasterizerSettings(NamedTuple):
@@ -13,7 +19,8 @@ class RasterizerSettings(NamedTuple):
     render_mask: torch.Tensor  # precomputed mask for culling invisible tiles
     render_mask_area_table: torch.Tensor  # precomputed table for culling invisible tiles
     fovea_mask_area_table: torch.Tensor  # precomputed table for the shape of the sharp foveated area
-    K: int  # only used for HYBRID_BLEND and ALPHA_BLEND_FIRST_K
+    periphery_interpolation_mode: PeripheryInterpolationMode
+    K: int  # size of the core for hybrid transparency
     active_sh_bases: int  # number of spherical harmonics bases to use for color computation
     width: int
     height: int
@@ -30,6 +37,7 @@ class RasterizerSettings(NamedTuple):
             self.render_mask,
             self.render_mask_area_table,
             self.fovea_mask_area_table,
+            self.periphery_interpolation_mode.value,
             self.K,
             self.active_sh_bases,
             self.width,
