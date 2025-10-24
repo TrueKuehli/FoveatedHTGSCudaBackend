@@ -116,15 +116,15 @@ void htgs::rasterization::hybrid_blend::inference(
     else cudaMemset(per_sub_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles);
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
-    // TODO: Does putting this section on a separate stream improve performance?
-    shared_kernels::fill_tile_index_num_tiles<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
+    shared_kernels::fill_tile_index_num_tiles
+            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile>
+            <<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
+    (
         per_tile_buffers.tile_index_map_num_tiles,
         render_mask,
         gaze_position_tiles,
         n_tiles_large,
-        grid_large.x,
-        config::foveation_radius_tiles,
-        config::num_small_tiles_per_large_tile
+        grid_large.x
     );
     CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles")
     cub::DeviceScan::InclusiveSum(
@@ -133,12 +133,14 @@ void htgs::rasterization::hybrid_blend::inference(
         n_tiles_large
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
-    shared_kernels::build_tile_index_map<<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>(
+    shared_kernels::build_tile_index_map
+            <config::num_small_tiles_per_large_tile>
+            <<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
+    (
         per_tile_buffers.tile_index_map,
         per_tile_buffers.tile_index_map_num_tiles,
         per_tile_buffers.tile_index_map_offsets,
-        n_tiles_large,
-        config::num_small_tiles_per_large_tile
+        n_tiles_large
     );
     CHECK_CUDA(config::debug_inference, "build_tile_index_map")
 
