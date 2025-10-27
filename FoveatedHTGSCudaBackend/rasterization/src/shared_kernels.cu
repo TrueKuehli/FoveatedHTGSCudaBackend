@@ -2,6 +2,7 @@
 #include "kernel_utils.cuh"
 #include "helper_math.h"
 #include <cstdint>
+#include <limits>
 
 namespace htgs::rasterization::shared_kernels {
 
@@ -104,6 +105,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const KeyT instance_tile_idx = instance_keys[instance_idx];
+        if (instance_tile_idx == std::numeric_limits<KeyT>::max()) return;  // Reject non-set keys
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
             const KeyT previous_instance_tile_idx = instance_keys[instance_idx - 1];
@@ -123,6 +125,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const uint64_t instance_key = instance_keys[instance_idx];
+        if (instance_key == std::numeric_limits<uint64_t>::max()) return;  // Reject non-set keys
         const uint instance_tile_idx = instance_key >> 32;
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
