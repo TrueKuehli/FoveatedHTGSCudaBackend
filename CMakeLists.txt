@@ -32,3 +32,8 @@ target_include_directories(FoveatedHTGSRasterizer PUBLIC
 set_target_properties(FoveatedHTGSRasterizer PROPERTIES CUDA_ARCHITECTURES "86")
 set_target_properties(FoveatedHTGSRasterizer PROPERTIES LINKER_LANGUAGE CUDA)
 set_target_properties(FoveatedHTGSRasterizer PROPERTIES FOLDER "extlibs")
+
+target_compile_options(FoveatedHTGSRasterizer PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
+  --generate-line-info
+  --use_fast_math
+>)
