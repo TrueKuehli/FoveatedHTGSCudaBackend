@@ -2,7 +2,6 @@
 #include "kernel_utils.cuh"
 #include "helper_math.h"
 #include <cstdint>
-#include <limits>
 
 namespace htgs::rasterization::shared_kernels {
 
@@ -105,7 +104,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const KeyT instance_tile_idx = instance_keys[instance_idx];
-        if (instance_tile_idx == std::numeric_limits<KeyT>::max()) return;  // Reject non-set keys
+        if (instance_tile_idx == ~static_cast<KeyT>(0)) return;  // Reject non-set keys
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
             const KeyT previous_instance_tile_idx = instance_keys[instance_idx - 1];
@@ -116,7 +115,7 @@ namespace htgs::rasterization::shared_kernels {
         }
         if (instance_idx == n_instances - 1) tile_instance_ranges[instance_tile_idx].y = n_instances;
     }
-    
+
     __global__ void extract_instance_ranges_cu(
         const uint64_t* instance_keys,
         uint2* tile_instance_ranges,
@@ -125,7 +124,7 @@ namespace htgs::rasterization::shared_kernels {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const uint64_t instance_key = instance_keys[instance_idx];
-        if (instance_key == std::numeric_limits<uint64_t>::max()) return;  // Reject non-set keys
+        if (instance_key == ~static_cast<uint64_t>(0)) return;  // Reject non-set keys
         const uint instance_tile_idx = instance_key >> 32;
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
