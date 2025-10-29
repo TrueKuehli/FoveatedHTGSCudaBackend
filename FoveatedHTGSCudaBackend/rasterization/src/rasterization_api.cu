@@ -45,9 +45,11 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
     torch::Tensor depth = torch::empty({height, width}, float_options);
     torch::Tensor per_primitive_buffers = torch::empty({0}, byte_options);
     torch::Tensor per_tile_buffers = torch::empty({0}, byte_options);
+    torch::Tensor per_subtile_buffers = torch::empty({0}, byte_options);
     torch::Tensor per_instance_buffers = torch::empty({0}, byte_options);
     const std::function<char*(size_t)> per_primitive_buffers_func = resize_function_wrapper(per_primitive_buffers);
     const std::function<char*(size_t)> per_tile_buffers_func = resize_function_wrapper(per_tile_buffers);
+    const std::function<char*(size_t)> per_subtile_buffers_func = resize_function_wrapper(per_subtile_buffers);
     const std::function<char*(size_t)> per_instance_buffers_func = resize_function_wrapper(per_instance_buffers);
 
     // When blurring the periphery, we need an extra image buffer
@@ -58,6 +60,7 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
     hybrid_blend::inference(
         per_primitive_buffers_func,
         per_tile_buffers_func,
+        per_subtile_buffers_func,
         per_instance_buffers_func,
         reinterpret_cast<const float3*>(positions.contiguous().data_ptr<float>()),
         reinterpret_cast<const float3*>(scales.contiguous().data_ptr<float>()),

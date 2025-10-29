@@ -44,6 +44,7 @@ void blend_k_templated(
 void htgs::rasterization::hybrid_blend::inference(
     std::function<char* (size_t)> per_primitive_buffers_func,
     std::function<char* (size_t)> per_tile_buffers_func,
+    std::function<char* (size_t)> per_subtile_buffers_func,
     std::function<char* (size_t)> per_instance_buffers_func,
     const float3* positions,
     const float3* scales,

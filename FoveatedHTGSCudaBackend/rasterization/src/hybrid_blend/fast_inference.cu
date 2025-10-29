@@ -44,6 +44,7 @@ void blend_k_templated(
 void htgs::rasterization::hybrid_blend::fast_inference(
     std::function<char* (size_t)> per_primitive_buffers_func,
     std::function<char* (size_t)> per_tile_buffers_func,
+    std::function<char* (size_t)> per_subtile_buffers_func,
     std::function<char* (size_t)> per_instance_buffers_func,
     const float3* positions,
     const float3* scales,
@@ -99,7 +100,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     PerTileBuffers per_tile_buffers = PerTileBuffers::from_blob(per_tile_buffers_blob, n_tiles_large);
 
     // TODO: This is an overallocation; should be optimized to use num_active_tiles
-    char* per_sub_tile_buffers_blob = per_tile_buffers_func(required<PerSubTileBuffers>(n_tiles));
+    char* per_sub_tile_buffers_blob = per_subtile_buffers_func(required<PerSubTileBuffers>(n_tiles));
     PerSubTileBuffers per_sub_tile_buffers = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob, n_tiles);
 
     static cudaStream_t memset_stream = 0;

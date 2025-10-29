@@ -39,7 +39,7 @@ namespace htgs::rasterization::shared_kernels {
         const KeyT* instance_keys,
         uint2* tile_instance_ranges,
         const uint n_instances);
-    
+
     __global__ void extract_instance_ranges_cu(
         const uint64_t* instance_keys,
         uint2* tile_instance_ranges,
