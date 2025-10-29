@@ -125,13 +125,13 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         n_tiles_large,
         grid_large.x
     );
-    CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles")
+    CHECK_CUDA(config::debug_fast_inference, "fill_tile_index_num_tiles")
     cub::DeviceScan::InclusiveSum(
         per_tile_buffers.cub_workspace, per_tile_buffers.cub_workspace_size,
         per_tile_buffers.tile_index_map_num_tiles, per_tile_buffers.tile_index_map_offsets,
         n_tiles_large
     );
-    CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
+    CHECK_CUDA(config::debug_fast_inference, "cub::DeviceScan::InclusiveSum (index_map)")
     shared_kernels::build_tile_index_map
             <config::num_small_tiles_per_large_tile>
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
@@ -141,7 +141,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         per_tile_buffers.tile_index_map_offsets,
         n_tiles_large
     );
-    CHECK_CUDA(config::debug_inference, "build_tile_index_map")
+    CHECK_CUDA(config::debug_fast_inference, "build_tile_index_map")
 
     uint num_active_tiles;
     cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles_large - 1, sizeof(uint), cudaMemcpyDeviceToHost);
@@ -283,7 +283,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
                 gaze_position_tiles,
                 to_chw
             );
-            CHECK_CUDA(config::debug_inference, "blur")
+            CHECK_CUDA(config::debug_fast_inference, "blur")
         }
     }, buffer_variant);
 
