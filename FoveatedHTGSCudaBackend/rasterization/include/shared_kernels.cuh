@@ -1,6 +1,7 @@
 #pragma once
 
 #include "helper_math.h"
+#include "kernel_utils.cuh"
 #include <cstdint>
 
 namespace htgs::rasterization::shared_kernels {
