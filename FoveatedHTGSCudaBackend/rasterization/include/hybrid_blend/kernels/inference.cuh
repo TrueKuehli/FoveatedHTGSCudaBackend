@@ -7,6 +7,7 @@
 
 namespace htgs::rasterization::hybrid_blend::kernels::inference {
 
+    template<bool anti_aliasing>
     __global__ void preprocess_cu(
         const float3* positions,
         const float3* scales,
@@ -29,6 +30,8 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         const uint active_sh_bases,
         const uint total_sh_bases,
         const uint2 gaze_position,
+        const float focal_x,
+        const float focal_y,
         const float near_plane,
         const float far_plane,
         const float scale_modifier)
@@ -39,22 +42,22 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         primitive_n_touched_tiles[primitive_idx] = 0;
 
         // transform and cull
+        float opacity = opacities[primitive_idx];
         const float3 position_world = positions[primitive_idx];
-        const float opacity = opacities[primitive_idx];
         const float4 M3 = c_M3;
         uint n_touched_tiles;
         uint4 screen_bounds;
         float3 u, v, w;
         float4 VPMT1, VPMT2, VPMT4;
         float z;
-        if (transform_and_cull(
+        if (transform_and_cull<anti_aliasing>(
             scales, rotations,
-            position_world, opacity, M3,
-            n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z,
+            position_world, M3,
+            n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
             render_mask_area_table, fovea_mask_area_table,
             primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
-            config::foveation_radius_tiles, gaze_position,
-            near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
+            config::foveation_radius_tiles, gaze_position, focal_x, focal_y,
+            near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier, config::aa_kernel_size
         )) return;
 
         // write intermediate results

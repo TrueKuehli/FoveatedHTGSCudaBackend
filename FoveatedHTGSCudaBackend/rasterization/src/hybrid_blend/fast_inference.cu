@@ -68,11 +68,14 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     const int total_sh_bases,
     const int width,
     const int height,
+    const float focal_x,
+    const float focal_y,
     const float near_plane,
     const float far_plane,
     const float scale_modifier,
     const bool to_chw,
-    const bool blur_periphery)
+    const bool blur_periphery,
+    const bool anti_aliasing)
 {
     cudaMemcpyToSymbol(c_M3, M + 2, sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_VPM, VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
@@ -146,8 +149,10 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     uint num_active_tiles;
     cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles_large - 1, sizeof(uint), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_fast_inference, "Fetch num_active_tiles")
-
-    kernels::fast_inference::preprocess_cu<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
+    const auto preprocess = anti_aliasing ?
+            kernels::fast_inference::preprocess_cu<true> :
+            kernels::fast_inference::preprocess_cu<false>;
+    preprocess<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
         positions,
         scales,
         rotations,
@@ -169,6 +174,8 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         active_sh_bases,
         total_sh_bases,
         gaze_position_tiles,
+        focal_x,
+        focal_y,
         near_plane,
         far_plane,
         scale_modifier

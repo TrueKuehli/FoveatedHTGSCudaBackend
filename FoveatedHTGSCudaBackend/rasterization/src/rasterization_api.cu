@@ -29,12 +29,15 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
     const int active_sh_bases,
     const int width,
     const int height,
+    const float focal_x,
+    const float focal_y,
     const float near_plane,
     const float far_plane,
     const float scale_modifier,
     const bool to_chw,
     const bool use_median_depth,
-    const bool blur_periphery
+    const bool blur_periphery,
+    const bool anti_aliasing
 ) {
     const PeripheryInterpolationMode periphery_mode = static_cast<PeripheryInterpolationMode>(periphery_interpolation_mode);
     const int n_primitives = positions.size(0);
@@ -85,12 +88,15 @@ std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
         total_sh_bases,
         width,
         height,
+        focal_x,
+        focal_y,
         near_plane,
         far_plane,
         scale_modifier,
         to_chw,
         use_median_depth,
-        blur_periphery
+        blur_periphery,
+        anti_aliasing
     );
 
     if (blur_periphery) return {image_final, depth};

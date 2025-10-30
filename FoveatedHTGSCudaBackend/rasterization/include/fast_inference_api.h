@@ -23,10 +23,13 @@ namespace htgs::rasterization {
         const int active_sh_bases,
         const int width,
         const int height,
+        const float focal_x,
+        const float focal_y,
         const float near_plane,
         const float far_plane,
         const float scale_modifier,
         const bool to_chw,
-        const bool blur_periphery);
+        const bool blur_periphery,
+        const bool anti_aliasing);
 
 }
