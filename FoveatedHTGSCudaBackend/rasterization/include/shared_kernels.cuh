@@ -15,10 +15,10 @@ namespace htgs::rasterization::shared_kernels {
         KeyT* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
-        const uint2 gaze_position_tiles,
+        const int2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles,
+        const uint foveation_radius_tiles_2,
         const uint num_small_tiles);
 
     __global__ void create_instances_cu(
@@ -29,10 +29,10 @@ namespace htgs::rasterization::shared_kernels {
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
-        const uint2 gaze_position_tiles,
+        const int2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles,
+        const uint foveation_radius_tiles_2,
         const uint num_small_tiles);
 
     template <typename KeyT>

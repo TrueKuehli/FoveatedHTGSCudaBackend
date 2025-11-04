@@ -13,10 +13,10 @@ namespace htgs::rasterization::shared_kernels {
         KeyT* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
-        const uint2 gaze_position_tiles,
+        const int2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius_tiles,
+        const uint foveation_radius_tiles_2,
         const uint num_small_tiles)
     {
         const uint primitive_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
@@ -30,7 +30,7 @@ namespace htgs::rasterization::shared_kernels {
                 const int mask_bit_idx = tile_idx % 32;
                 if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
-                if (is_in_fovea(tile_idx, grid_width, gaze_position_tiles, foveation_radius_tiles)) {
+                if (is_in_fovea(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles, foveation_radius_tiles_2)) {
                     // Tile is in fovea, so create instances for each small tile
                     // TODO: #pragma unroll num_small_tiles
                     for (uint i = 0; i < num_small_tiles; ++i) {
@@ -57,10 +57,10 @@ namespace htgs::rasterization::shared_kernels {
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
         const uint* render_mask,
-        const uint2 gaze_position_tiles,
+        const int2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives,
-        const uint foveation_radius,
+        const uint foveation_radius_tiles_2,
         const uint num_small_tiles)
     {
         const uint primitive_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
@@ -75,7 +75,7 @@ namespace htgs::rasterization::shared_kernels {
                 const int mask_bit_idx = tile_idx % 32;
                 if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
-                if (is_in_fovea(tile_idx, grid_width, gaze_position_tiles, foveation_radius)) {
+                if (is_in_fovea(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles, foveation_radius_tiles_2)) {
                     // Tile is in fovea, so create instances for each small tile
                     // TODO: Tighten bounds checks in preprocessing to sub-tile level
                     // TODO: #pragma unroll num_small_tiles
@@ -139,9 +139,9 @@ namespace htgs::rasterization::shared_kernels {
     }
 
     template __global__ void create_instances_cu<uint>(
-        const uint*, const uint*, const uint4*, uint*, uint*, const uint*, const uint2, const uint, const uint, const uint, const uint);
+        const uint*, const uint*, const uint4*, uint*, uint*, const uint*, const int2, const uint, const uint, const uint, const uint);
     template __global__ void create_instances_cu<ushort>(
-        const uint*, const uint*, const uint4*, ushort*, uint*, const uint*, const uint2, const uint, const uint, const uint, const uint);
+        const uint*, const uint*, const uint4*, ushort*, uint*, const uint*, const int2, const uint, const uint, const uint, const uint);
     template __global__ void extract_instance_ranges_cu<uint>(
         const uint*, uint2*, const uint);
     template __global__ void extract_instance_ranges_cu<ushort>(

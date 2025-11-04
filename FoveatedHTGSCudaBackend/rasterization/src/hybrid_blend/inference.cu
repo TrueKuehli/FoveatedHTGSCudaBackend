@@ -251,10 +251,10 @@ void htgs::rasterization::hybrid_blend::inference(
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
             render_mask,
-            gaze_position_tiles,
+            make_int2(gaze_position_tiles.x, gaze_position_tiles.y),
             grid_large.x,
             n_primitives,
-            config::foveation_radius_tiles,
+            config::foveation_radius_tiles * config::foveation_radius_tiles,
             config::num_small_tiles_per_large_tile
         );
         CHECK_CUDA(config::debug_inference, "create_instances")

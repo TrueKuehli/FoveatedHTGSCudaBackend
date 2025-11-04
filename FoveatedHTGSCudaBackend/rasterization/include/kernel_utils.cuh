@@ -46,6 +46,19 @@ __forceinline__ __device__ bool is_in_fovea(
 }
 
 
+__forceinline__ __device__ bool is_in_fovea(
+    const int2 tile_coords,
+    const uint grid_width,
+    const int2 gaze_position_tiles,
+    const uint radius_sq)
+{
+    const int2 to_gaze = tile_coords - gaze_position_tiles;
+    const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
+
+    return squared_distance_to_gaze < radius_sq;
+}
+
+
 __forceinline__ __device__ Mat3x3 convert_quaterion_to_rotation_matrix(
     const float4& quaternion)
 {
