@@ -12,31 +12,32 @@
 #include <utility>
 #include <type_traits>
 
-template <typename... Args>
+template <bool is_lowres_tile, bool is_blended_tile, typename... Args>
 void blend_k_templated(
     const dim3& grid,
     const dim3& block,
+    const cudaStream_t stream,
     const int K,
     const PeripheryInterpolationMode periphery_mode,
     Args&&... kernel_args)
 {
     switch (periphery_mode) {
         case PeripheryInterpolationMode::LINEAR:
-            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<32, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<16, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<8, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<4, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<2, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<1, PeripheryInterpolationMode::LINEAR><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<32, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<16, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<8, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<4, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<2, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<1, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
             break;
         case PeripheryInterpolationMode::NEAREST:
         default:
-            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<32, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<16, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<8, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<4, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<2, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
-            else htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<1, PeripheryInterpolationMode::NEAREST><<<grid, block>>>(std::forward<Args>(kernel_args)...);
+            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<32, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<16, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<8, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<4, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<2, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            else htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<1, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
             break;
     }
 }
@@ -105,7 +106,7 @@ void htgs::rasterization::hybrid_blend::inference(
     PerTileBuffers per_tile_buffers = PerTileBuffers::from_blob(per_tile_buffers_blob, n_tiles_large);
 
     // TODO: This is an overallocation; should be optimized to use num_active_tiles
-    char* per_sub_tile_buffers_blob = per_tile_buffers_func(required<PerSubTileBuffers>(n_tiles));
+    char* per_sub_tile_buffers_blob = per_subtile_buffers_func(required<PerSubTileBuffers>(n_tiles));
     PerSubTileBuffers per_sub_tile_buffers = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob, n_tiles);
 
     static cudaStream_t memset_stream = 0;
@@ -122,7 +123,7 @@ void htgs::rasterization::hybrid_blend::inference(
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
     shared_kernels::fill_tile_index_num_tiles
             <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile>
-            <<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
+            <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
         render_mask,
@@ -139,11 +140,15 @@ void htgs::rasterization::hybrid_blend::inference(
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
     shared_kernels::build_tile_index_map
             <config::num_small_tiles_per_large_tile>
-            <<<div_round_up(n_tiles, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
+            <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
-        per_tile_buffers.tile_index_map,
+        per_sub_tile_buffers.tile_index_map,
+        per_sub_tile_buffers.tile_type,
         per_tile_buffers.tile_index_map_num_tiles,
         per_tile_buffers.tile_index_map_offsets,
+        gaze_position_tiles,
+        config::blend_radius_tiles,
+        grid_large.x,
         n_tiles_large
     );
     CHECK_CUDA(config::debug_inference, "build_tile_index_map")
@@ -151,6 +156,29 @@ void htgs::rasterization::hybrid_blend::inference(
     uint num_active_tiles;
     cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles_large - 1, sizeof(uint), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch num_active_tiles")
+
+    // TODO: Test performance using cub::DevicePartition::If (for three-partition case)
+    cub::DeviceRadixSort::SortPairs(
+        per_sub_tile_buffers.cub_workspace, per_sub_tile_buffers.cub_workspace_size,
+        reinterpret_cast<uint8_t*>(per_sub_tile_buffers.tile_type), reinterpret_cast<uint8_t*>(per_sub_tile_buffers.tile_type_partitioned),
+        per_sub_tile_buffers.tile_index_map, per_sub_tile_buffers.tile_index_map_partitioned,
+        num_active_tiles, 0, NUM_TILE_TYPE_BITS
+    );
+    CHECK_CUDA(config::debug_inference, "Sort tiles by type")
+    shared_kernels::get_partition_offsets_cu
+            <<<div_round_up(static_cast<int>(num_active_tiles), config::block_size_get_partition_offsets), config::block_size_get_partition_offsets>>>
+    (
+        reinterpret_cast<int*>(per_sub_tile_buffers.partition_offsets),
+        per_sub_tile_buffers.tile_type_partitioned,
+        num_active_tiles
+    );
+    CHECK_CUDA(config::debug_inference, "Partition tiles by type")
+
+    PartitionOffsets offsets_cpu;
+    cudaMemcpy(&offsets_cpu, per_sub_tile_buffers.partition_offsets, sizeof(PartitionOffsets), cudaMemcpyDeviceToHost);
+    const int num_tiles_fovea = offsets_cpu.periphery_tiles_offset;
+    const int num_tiles_periphery = offsets_cpu.blended_tiles_offset - offsets_cpu.periphery_tiles_offset;
+    const int num_tiles_blended = num_active_tiles - offsets_cpu.blended_tiles_offset;
 
     const auto preprocess = anti_aliasing ?
         kernels::inference::preprocess_cu<true> :
@@ -253,9 +281,23 @@ void htgs::rasterization::hybrid_blend::inference(
             CHECK_CUDA(config::debug_inference, "extract_instance_ranges")
         }
 
-        const dim3 blend_grid(num_active_tiles, 1, 1);
-        blend_k_templated(blend_grid, block, K, periphery_mode,
-            per_tile_buffers.tile_index_map,
+        static cudaStream_t blend_fovea_stream = 0;
+        static cudaStream_t blend_periphery_stream = 0;
+        static cudaStream_t blend_blended_tiles_stream = 0;
+        static bool blend_streams_initialized = false;
+        if (!blend_streams_initialized) {
+            cudaStreamCreate(&blend_fovea_stream);
+            cudaStreamCreate(&blend_periphery_stream);
+            cudaStreamCreate(&blend_blended_tiles_stream);
+            blend_streams_initialized = true;
+        }
+
+        const dim3 blend_grid_fovea(num_tiles_fovea, 1, 1);
+        const dim3 blend_grid_periphery(num_tiles_periphery, 1, 1);
+        const dim3 blend_grid_blended(num_tiles_blended, 1, 1);
+        // Blended tiles and periphery required to do hole filling, so queue those kernel launches first
+        blend_k_templated<false, true>(blend_grid_blended, block, blend_blended_tiles_stream, K, periphery_mode,
+            per_sub_tile_buffers.tile_index_map_partitioned,
             per_sub_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
             per_primitive_buffers.VPMT1,
@@ -266,16 +308,58 @@ void htgs::rasterization::hybrid_blend::inference(
             image,
             depth,
             gaze_position_tiles,
+            offsets_cpu.blended_tiles_offset,
             width,
             height,
             grid_large.x,
             to_chw,
             use_median_depth
         );
-        CHECK_CUDA(config::debug_inference, "blend")
+        CHECK_CUDA(config::debug_inference, "blend_blended_tiles")
+        blend_k_templated<true, false>(blend_grid_periphery, block, blend_periphery_stream, K, periphery_mode,
+            per_sub_tile_buffers.tile_index_map_partitioned,
+            per_sub_tile_buffers.instance_ranges,
+            per_instance_buffers.primitive_indices.Current(),
+            per_primitive_buffers.VPMT1,
+            per_primitive_buffers.VPMT2,
+            per_primitive_buffers.VPMT4,
+            per_primitive_buffers.MT3,
+            per_primitive_buffers.rgba,
+            image,
+            depth,
+            gaze_position_tiles,
+            offsets_cpu.periphery_tiles_offset,
+            width,
+            height,
+            grid_large.x,
+            to_chw,
+            use_median_depth
+        );
+        CHECK_CUDA(config::debug_inference, "blend_periphery")
+        blend_k_templated<false, false>(blend_grid_fovea, block, blend_fovea_stream, K, periphery_mode,
+            per_sub_tile_buffers.tile_index_map_partitioned,
+            per_sub_tile_buffers.instance_ranges,
+            per_instance_buffers.primitive_indices.Current(),
+            per_primitive_buffers.VPMT1,
+            per_primitive_buffers.VPMT2,
+            per_primitive_buffers.VPMT4,
+            per_primitive_buffers.MT3,
+            per_primitive_buffers.rgba,
+            image,
+            depth,
+            gaze_position_tiles,
+            0,  // offset into partitioned tile index map
+            width,
+            height,
+            grid_large.x,
+            to_chw,
+            use_median_depth
+        );
+        CHECK_CUDA(config::debug_inference, "blend_fovea")
 
+        cudaStreamSynchronize(blend_blended_tiles_stream);
         if (periphery_mode == PeripheryInterpolationMode::LINEAR) {
-            htgs::rasterization::hybrid_blend::kernels::inference::interpolate_missing<<<grid, block>>>(
+            htgs::rasterization::hybrid_blend::kernels::inference::interpolate_missing<<<grid, block, 0, blend_periphery_stream>>>(
                 image,
                 width,
                 height,
@@ -284,9 +368,8 @@ void htgs::rasterization::hybrid_blend::inference(
                 to_chw
             );
         }
-
         if (blur_periphery) {
-            htgs::rasterization::hybrid_blend::kernels::inference::blur_cu<<<grid, block>>>(
+            htgs::rasterization::hybrid_blend::kernels::inference::blur_cu<<<grid, block, 0, blend_periphery_stream>>>(
                 image,
                 image_final,
                 width,
@@ -297,6 +380,10 @@ void htgs::rasterization::hybrid_blend::inference(
             );
             CHECK_CUDA(config::debug_inference, "blur")
         }
+
+        cudaStreamSynchronize(blend_fovea_stream);
+        cudaStreamSynchronize(blend_periphery_stream);
+        cudaStreamSynchronize(blend_blended_tiles_stream);
     }, buffer_variant);
 
     // Draw a red dot at the gaze position for visualization

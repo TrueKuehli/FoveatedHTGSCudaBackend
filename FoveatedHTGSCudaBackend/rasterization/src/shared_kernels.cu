@@ -146,4 +146,17 @@ namespace htgs::rasterization::shared_kernels {
         const uint*, uint2*, const uint);
     template __global__ void extract_instance_ranges_cu<ushort>(
         const ushort*, uint2*, const uint);
+
+    __global__ void get_partition_offsets_cu(
+        int* partition_offsets,
+        const TileType* tile_type_map,
+        const uint n_tiles
+    ) {
+        const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
+        if (tile_idx >= n_tiles) return;
+
+        if (tile_idx > 0 && tile_type_map[tile_idx] != tile_type_map[tile_idx - 1]) {
+            partition_offsets[static_cast<uint8_t>(tile_type_map[tile_idx]) - 1] = tile_idx;
+        }
+    }
 }

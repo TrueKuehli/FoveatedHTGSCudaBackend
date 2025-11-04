@@ -1,5 +1,6 @@
 #pragma once
 
+#include "enums.h"
 #include "helper_math.h"
 #include <cub/cub.cuh>
 
@@ -86,13 +87,11 @@ namespace htgs::rasterization::hybrid_blend {
     struct PerTileBuffers {
         size_t cub_workspace_size;
         char* cub_workspace;
-        uint* tile_index_map;
         uint* tile_index_map_num_tiles;
         uint* tile_index_map_offsets;
 
         static PerTileBuffers from_blob(char*& blob, size_t n_tiles_large) {
             PerTileBuffers buffers;
-            obtain(blob, buffers.tile_index_map, n_tiles_large, 128);
             obtain(blob, buffers.tile_index_map_num_tiles, n_tiles_large, 128);
             obtain(blob, buffers.tile_index_map_offsets, n_tiles_large, 128);
 
@@ -106,12 +105,39 @@ namespace htgs::rasterization::hybrid_blend {
         }
     };
 
+    struct PartitionOffsets {
+        int periphery_tiles_offset;
+        int blended_tiles_offset;
+    };
+
     struct PerSubTileBuffers {
+        size_t cub_workspace_size;
+        char* cub_workspace;
+
         uint2* instance_ranges;
+        uint* tile_index_map;
+        uint* tile_index_map_partitioned;
+        TileType* tile_type;
+        TileType* tile_type_partitioned;
+        PartitionOffsets* partition_offsets;
 
         static PerSubTileBuffers from_blob(char*& blob, size_t n_tiles) {
             PerSubTileBuffers buffers;
             obtain(blob, buffers.instance_ranges, n_tiles, 128);
+            obtain(blob, buffers.tile_index_map, n_tiles, 128);
+            obtain(blob, buffers.tile_index_map_partitioned, n_tiles, 128);
+            obtain(blob, buffers.tile_type, n_tiles, 128);
+            obtain(blob, buffers.tile_type_partitioned, n_tiles, 128);
+            obtain(blob, buffers.partition_offsets, 1, 128);
+
+            cub::DeviceRadixSort::SortPairs(
+                nullptr, buffers.cub_workspace_size,
+                reinterpret_cast<uint8_t*>(buffers.tile_type), reinterpret_cast<uint8_t*>(buffers.tile_type_partitioned),
+                buffers.tile_index_map, buffers.tile_index_map_partitioned,
+                n_tiles, 0, NUM_TILE_TYPE_BITS
+            );
+            obtain(blob, buffers.cub_workspace, buffers.cub_workspace_size, 128);
+
             return buffers;
         }
     };

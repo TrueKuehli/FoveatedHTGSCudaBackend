@@ -38,6 +38,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int block_size_preprocess = 256;
     DEF int block_size_create_instances = 256;
     DEF int block_size_extract_instance_ranges = 256;
+    DEF int block_size_get_partition_offsets = 256;
     DEF int block_size_blend = tile_width_small * tile_height_small;
     DEF int block_size_blur = 256;
 

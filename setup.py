@@ -36,7 +36,7 @@ include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
     include_dirs.append(str(extension_root.absolute() / module / 'include'))
 
-cxx_flags, nvcc_flags = [], []
+cxx_flags, nvcc_flags = ['--std=c++20'], ['-std=c++20']
 if ENABLE_NVCC_LINEINFO:
     nvcc_flags.append('-lineinfo')
 

@@ -82,7 +82,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, PeripheryInterpolationMode periphery_mode>
+    template <int K, bool is_lowres_tile, bool is_blended_tile, PeripheryInterpolationMode periphery_mode>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -95,6 +95,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         float* image,
         float* depths,
         const uint2 gaze_position_tiles,
+        const uint tile_offset,
         const uint width,
         const uint height,
         const uint grid_width,
@@ -102,14 +103,12 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         const bool use_median_depth)
     {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
-        const uint group_index = block.group_index().x;
+        const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
         const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
         const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
         const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
         const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
-        const bool is_lowres_tile = !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::foveation_radius_tiles);
-        const bool is_blended_tile = !is_lowres_tile && !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::blend_radius_tiles);
 
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
@@ -118,8 +117,10 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
             large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y * (is_lowres_tile ? config::tile_stride_y : 1)
         );
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
-        const float pixel_x = __uint2float_rn(pixel_coords.x) + (is_lowres_tile && periphery_mode == PeripheryInterpolationMode::NEAREST ? 0.5f : 0.0f);
-        const float pixel_y = __uint2float_rn(pixel_coords.y) + (is_lowres_tile && periphery_mode == PeripheryInterpolationMode::NEAREST ? 0.5f : 0.0f);
+
+        constexpr const float pixel_offset = (is_lowres_tile && periphery_mode == PeripheryInterpolationMode::NEAREST) ? 0.5f : 0.0f;
+        const float pixel_x = __uint2float_rn(pixel_coords.x) + pixel_offset;
+        const float pixel_y = __uint2float_rn(pixel_coords.y) + pixel_offset;
         // setup shared memory
         __shared__ float4 collected_VPMT1[config::block_size_blend], collected_VPMT2[config::block_size_blend], collected_VPMT4[config::block_size_blend], collected_MT3[config::block_size_blend];
         __shared__ float3 collected_rgb[config::block_size_blend];
@@ -225,7 +226,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
             // store results
 
             if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
-                if (is_lowres_tile) {
+                if constexpr (is_lowres_tile) {
                     for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
                         for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
                             const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
@@ -273,7 +274,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
                 }
             }
 
-            if (is_blended_tile) {
+            if constexpr (is_blended_tile) {
                 // Get the pixel coordinates of the top left pixel of each blending group
                 const uint2 top_left_pixel_coords = make_uint2(
                     large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x / config::tile_stride_x * config::tile_stride_x,
@@ -285,6 +286,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
 
                 // Calculate average pixel color for blending
                 float3 average_rgb_pixel = make_float3(0.0f);
+                // TODO: Test pragma unroll (still requires if though to skip out-of-bounds pixels)
                 for (uint x = 0; x < min(config::tile_stride_x, width - top_left_pixel_coords.x); x++) {
                     for (uint y = 0; y < min(config::tile_stride_y, height - top_left_pixel_coords.y); y++) {
                         const int pixel_idx = width * (top_left_pixel_coords.y + y) + (top_left_pixel_coords.x + x);

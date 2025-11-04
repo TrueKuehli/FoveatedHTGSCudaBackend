@@ -1,5 +1,6 @@
 #pragma once
 
+#include "enums.h"
 #include "helper_math.h"
 #include "kernel_utils.cuh"
 #include <cstdint>
@@ -75,8 +76,12 @@ namespace htgs::rasterization::shared_kernels {
     template <int num_small_tiles>
     __global__ inline void build_tile_index_map(
         uint* tile_index_map,
+        TileType* tile_type_map,
         const uint* tile_index_map_num_tiles,
         const uint* tile_index_map_offsets,
+        const uint2 gaze_position_tiles,
+        const int blend_radius_tiles,
+        const uint grid_width,
         const uint num_tiles_total
     ) {
         // The tile index map essentially identifies the (location of) each tile in the tile grid, knowing only the index among all active tiles
@@ -94,12 +99,25 @@ namespace htgs::rasterization::shared_kernels {
         const uint base_idx = tile_idx == 0 ? 0 : tile_index_map_offsets[tile_idx - 1];
         if (tile_index_map_num_tiles[tile_idx] == 1) {
             tile_index_map[base_idx] = tile_idx * num_small_tiles;
+            tile_type_map[base_idx] = TileType::PERIPHERY;
         } else {
+            const TileType tile_type =
+                    is_in_fovea(tile_idx, grid_width, gaze_position_tiles, blend_radius_tiles) ?
+                    TileType::FOVEA :
+                    TileType::BLENDED;
+
             // Tile gets split
             #pragma unroll
             for (uint i = 0; i < num_small_tiles; ++i) {
                 tile_index_map[base_idx + i] = tile_idx * num_small_tiles + i;
+                tile_type_map[base_idx + i] = tile_type;
             }
         }
     }
+
+    __global__ void get_partition_offsets_cu(
+        int* partition_offsets,
+        const TileType* tile_type_map,
+        const uint n_tiles
+    );
 }
