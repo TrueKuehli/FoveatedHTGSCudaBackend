@@ -141,19 +141,4 @@ namespace htgs::rasterization::hybrid_blend {
             return buffers;
         }
     };
-
-    struct PerPixelBuffers {
-        uint* primitive_indices_core;
-        float4* grad_info_core;
-        float* grad_info_tail; // rgb_tail, alpha_sum_rcp_tail, transmitance_tail, transmitance_core
-
-        static PerPixelBuffers from_blob(char*& blob, size_t n_pixels, int K) {
-            PerPixelBuffers buffers;
-            obtain(blob, buffers.primitive_indices_core, n_pixels * K, 128);
-            obtain(blob, buffers.grad_info_core, n_pixels * K, 128);
-            obtain(blob, buffers.grad_info_tail, n_pixels * 6, 128);
-            return buffers;
-        }
-    };
-
 }
