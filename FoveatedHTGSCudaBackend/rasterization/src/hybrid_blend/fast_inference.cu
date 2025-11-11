@@ -178,7 +178,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
     );
     CHECK_CUDA(config::debug_fast_inference, "cub::DeviceScan::InclusiveSum (index_map)")
     shared_kernels::build_tile_index_map
-            <config::num_small_tiles_per_large_tile>
+            <config::num_small_tiles_per_large_tile, config::blend_radius_tiles>
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_sub_tile_buffers.tile_index_map,
@@ -186,7 +186,6 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         per_tile_buffers.tile_index_map_num_tiles,
         per_tile_buffers.tile_index_map_offsets,
         gaze_position_tiles,
-        config::blend_radius_tiles,
         grid_large.x,
         n_tiles_large
     );
@@ -283,7 +282,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         // compute-sanitizer will complain if the following isn't also executed
         // cudaMemset(per_instance_buffers.primitive_indices.Current(), 255, sizeof(uint) * n_instances);
 
-        shared_kernels::create_instances_cu<KeyT><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
+        shared_kernels::create_instances_cu<KeyT, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
             per_primitive_buffers.n_touched_tiles,
             per_primitive_buffers.offset,
             per_primitive_buffers.screen_bounds,
@@ -292,9 +291,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             render_mask,
             make_int2(gaze_position_tiles.x, gaze_position_tiles.y),
             grid_large.x,
-            n_primitives,
-            config::foveation_radius_tiles * config::foveation_radius_tiles,
-            config::num_small_tiles_per_large_tile
+            n_primitives
         );
         CHECK_CUDA(config::debug_fast_inference, "create_instances")
 

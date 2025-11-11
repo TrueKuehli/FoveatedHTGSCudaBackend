@@ -29,12 +29,13 @@ __device__ void swap(
 }
 
 
+template <uint radius>
 __forceinline__ __device__ bool is_in_fovea(
     const uint tile_idx,
     const uint grid_width,
-    const uint2 gaze_position_tiles,
-    const uint radius)
+    const uint2 gaze_position_tiles)
 {
+    constexpr uint radius_sq = radius * radius;
     const int2 tile_coords = make_int2(
         tile_idx % grid_width,
         tile_idx / grid_width
@@ -42,16 +43,17 @@ __forceinline__ __device__ bool is_in_fovea(
     const int2 to_gaze = tile_coords - make_int2(gaze_position_tiles.x, gaze_position_tiles.y);
     const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
-    return squared_distance_to_gaze < radius * radius;
+    return squared_distance_to_gaze < radius_sq;
 }
 
 
+template <uint radius>
 __forceinline__ __device__ bool is_in_fovea(
     const int2 tile_coords,
     const uint grid_width,
-    const int2 gaze_position_tiles,
-    const uint radius_sq)
+    const int2 gaze_position_tiles)
 {
+    constexpr uint radius_sq = radius * radius;
     const int2 to_gaze = tile_coords - gaze_position_tiles;
     const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
 

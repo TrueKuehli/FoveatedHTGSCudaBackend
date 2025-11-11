@@ -386,7 +386,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
         const uint large_tile_index = group_index.y / config::tile_stride_y * grid_width + group_index.x / config::tile_stride_x;
-        const bool is_fovea_tile = is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::foveation_radius_tiles);
+        const bool is_fovea_tile = is_in_fovea<config::foveation_radius_tiles>(large_tile_index, grid_width, gaze_position_tiles);
         if (is_fovea_tile) return;
 
         const uint2 pixel_coords = make_uint2(
@@ -489,7 +489,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
         const uint large_tile_index = group_index.y / config::tile_stride_y * grid_width + group_index.x / config::tile_stride_x;
-        const bool is_lowres_tile = !is_in_fovea(large_tile_index, grid_width, gaze_position_tiles, config::foveation_radius_tiles);
+        const bool is_lowres_tile = !is_in_fovea<config::foveation_radius_tiles>(large_tile_index, grid_width, gaze_position_tiles);
 
         const uint2 pixel_coords = make_uint2(
             group_index.x * config::tile_width_small + thread_index.x,
