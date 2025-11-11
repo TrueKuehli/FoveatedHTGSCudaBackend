@@ -12,32 +12,73 @@
 #include <utility>
 #include <type_traits>
 
-template <bool is_lowres_tile, bool is_blended_tile, typename... Args>
+template <bool is_lowres_tile, typename... Args>
 void blend_k_templated(
     const dim3& grid,
     const dim3& block,
     const cudaStream_t stream,
     const int K,
+    const int K_blended,
     const PeripheryInterpolationMode periphery_mode,
     Args&&... kernel_args)
 {
     switch (periphery_mode) {
         case PeripheryInterpolationMode::LINEAR:
-            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            if (K_blended >= 16) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 16, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 16, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 8) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 8, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 8, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 8, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 4) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 4, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 4, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 4, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 4, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 2) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 2, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 2, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 2, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 2, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, 2, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, 1, is_lowres_tile, PeripheryInterpolationMode::LINEAR><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            }
             break;
         case PeripheryInterpolationMode::NEAREST:
         default:
-            if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-            else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, is_lowres_tile, is_blended_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            if (K_blended >= 16) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 16, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 16, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 8) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 8, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 8, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 8, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 4) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 4, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 4, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 4, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 4, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else if (K_blended >= 2) {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 2, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 2, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 2, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 2, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, 2, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            } else {
+                if (K >= 32) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<32, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<16, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<8, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<4, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<2, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+                else htgs::rasterization::hybrid_blend::kernels::fast_inference::blend_cu<1, 1, is_lowres_tile, PeripheryInterpolationMode::NEAREST><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+            }
             break;
     }
 }
@@ -295,7 +336,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
         const dim3 blend_grid_periphery(num_tiles_periphery, 1, 1);
         const dim3 blend_grid_blended(num_tiles_blended, 1, 1);
         // Blended tiles and periphery required to do hole filling, so queue those kernel launches first
-        blend_k_templated<false, true>(blend_grid_blended, block, blend_blended_tiles_stream, K, periphery_mode,
+        blend_k_templated<false>(blend_grid_blended, block, blend_blended_tiles_stream, K, K / 2, periphery_mode,
             per_sub_tile_buffers.tile_index_map_partitioned,
             per_sub_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
@@ -313,7 +354,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             to_chw
         );
         CHECK_CUDA(config::debug_fast_inference, "blend_blended_tiles")
-        blend_k_templated<true, false>(blend_grid_periphery, block, blend_periphery_stream, K, periphery_mode,
+        blend_k_templated<true>(blend_grid_periphery, block, blend_periphery_stream, K / 2, K / 2, periphery_mode,
             per_sub_tile_buffers.tile_index_map_partitioned,
             per_sub_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),
@@ -331,7 +372,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             to_chw
         );
         CHECK_CUDA(config::debug_inference, "blend_periphery")
-        blend_k_templated<false, false>(blend_grid_fovea, block, blend_fovea_stream, K, periphery_mode,
+        blend_k_templated<false>(blend_grid_fovea, block, blend_fovea_stream, K, K, periphery_mode,
             per_sub_tile_buffers.tile_index_map_partitioned,
             per_sub_tile_buffers.instance_ranges,
             per_instance_buffers.primitive_indices.Current(),

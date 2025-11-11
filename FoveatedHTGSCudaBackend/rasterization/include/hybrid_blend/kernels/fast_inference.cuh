@@ -83,7 +83,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, bool is_lowres_tile, bool is_blended_tile, PeripheryInterpolationMode periphery_mode>
+    template <int K, int K_blended, bool is_lowres_tile, PeripheryInterpolationMode periphery_mode>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -101,6 +101,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const uint grid_width,
         const bool output_chw)
     {
+        constexpr bool is_blended_tile = K_blended < K;
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
@@ -126,7 +127,13 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         __shared__ float collected_opacity[config::block_size_blend];
         // initialize local storage
         float transmittance_tail = 1.0f;
+        float transmittance_tail_blended;
         float4 rgba_premultiplied_tail = make_float4(0.0f);
+        float4 rgba_premultiplied_tail_blended;
+        if constexpr (is_blended_tile) {
+            transmittance_tail_blended = 1.0f;
+            rgba_premultiplied_tail_blended = make_float4(0.0f);
+        }
         __half2 rgbas_premultiplied_core_rg[K];
         __half2 rgbas_premultiplied_core_ba[K];
         float depths_core[K];
@@ -177,6 +184,19 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                     const float3 rgb = collected_rgb[j];
                     __half2 rgba_premultiplied_rg = __float22half2_rn(make_float2(rgb.x * alpha, rgb.y * alpha));
                     __half2 rgba_premultiplied_ba = __float22half2_rn(make_float2(rgb.z * alpha, alpha));
+                    // Collect tail early for blended tiles
+                    if constexpr (is_blended_tile) {
+                        if (depth < depths_core[K_blended - 1] && alpha >= config::min_alpha_threshold_core) {
+                            rgba_premultiplied_tail_blended += make_float4(
+                                __half2float(rgbas_premultiplied_core_rg[K_blended - 1].x),
+                                __half2float(rgbas_premultiplied_core_rg[K_blended - 1].y),
+                                __half2float(rgbas_premultiplied_core_ba[K_blended - 1].x),
+                                __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y)
+                            );
+                            transmittance_tail_blended *= 1.0f - __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y);
+                        }
+                    }
+
                     if (depth < depths_core[K - 1] && alpha >= config::min_alpha_threshold_core) {
                         #pragma unroll
                         for (int core_idx = 0; core_idx < K; ++core_idx) {
@@ -187,16 +207,28 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                             }
                         }
                     }
-                    rgba_premultiplied_tail += make_float4(__half2float(rgba_premultiplied_rg.x), __half2float(rgba_premultiplied_rg.y), __half2float(rgba_premultiplied_ba.x), __half2float(rgba_premultiplied_ba.y));
-                    transmittance_tail *= 1.0f - __half2float(rgba_premultiplied_ba.y);
+                    const float4 primitive_rgba_premultiplied_tail = make_float4(__half2float(rgba_premultiplied_rg.x), __half2float(rgba_premultiplied_rg.y), __half2float(rgba_premultiplied_ba.x), __half2float(rgba_premultiplied_ba.y));
+                    const float primitive_transmittance_tail = 1.0f - __half2float(rgba_premultiplied_ba.y);
+                    rgba_premultiplied_tail += primitive_rgba_premultiplied_tail;
+                    transmittance_tail *= primitive_transmittance_tail;
+                    if constexpr (is_blended_tile) {
+                        rgba_premultiplied_tail_blended += primitive_rgba_premultiplied_tail;
+                        transmittance_tail_blended *= primitive_transmittance_tail;
+                    }
                 }
             }
         }
         if (inside) {
             // blend core
             float3 rgb_pixel = make_float3(0.0f);
+            float3 rgb_pixel_blended;
+            if constexpr (is_blended_tile) {
+                rgb_pixel_blended = make_float3(0.0f);
+            }
             float transmittance_core = 1.0f;
+            float transmittance_core_blended = 1.0f;
             bool done = false;
+            bool done_blended = false;
             #pragma unroll
             for (int core_idx = 0; core_idx < K && !done; ++core_idx) {
                 const float2 rgba_premultiplied_rg = __half22float2(rgbas_premultiplied_core_rg[core_idx]);
@@ -205,29 +237,71 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                 rgb_pixel += transmittance_core * rgb_premultiplied;
                 transmittance_core *= 1.0f - rgba_premultiplied_ba.y;
                 if (transmittance_core < config::transmittance_threshold) done = true;
+                if constexpr (is_blended_tile) {
+                    if (core_idx < K_blended) {
+                        rgb_pixel_blended += transmittance_core_blended * rgb_premultiplied;
+                        transmittance_core_blended *= 1.0f - rgba_premultiplied_ba.y;
+                        if (transmittance_core_blended < config::transmittance_threshold) done_blended = true;
+                    }
+                }
             }
             // blend tail
             if (!done && rgba_premultiplied_tail.w >= config::min_alpha_threshold) {
                 const float weight_tail = transmittance_core * (1.0f - transmittance_tail);
                 rgb_pixel += weight_tail * (1.0f / rgba_premultiplied_tail.w) * make_float3(rgba_premultiplied_tail);
             }
-            // store results
-            if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
-                if constexpr (is_lowres_tile) {
-                    for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
-                        for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
-                            const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
-                            if (output_chw) {
-                                const int n_pixels = width * height;
-                                image[pixel_idx] = __saturatef(rgb_pixel.x);
-                                image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                                image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
-                            } else {
-                                const int base_idx = 3 * pixel_idx;
-                                image[base_idx] = __saturatef(rgb_pixel.x);
-                                image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                                image[base_idx + 2] = __saturatef(rgb_pixel.z);
+            if constexpr (is_blended_tile) {
+                if (!done_blended && rgba_premultiplied_tail_blended.w >= config::min_alpha_threshold) {
+                    const float weight_tail_blended = transmittance_core_blended * (1.0f - transmittance_tail_blended);
+                    rgb_pixel_blended += weight_tail_blended * (1.0f / rgba_premultiplied_tail_blended.w) * make_float3(rgba_premultiplied_tail_blended);
+                }
+            }
+            if constexpr (is_blended_tile) {
+                // store intermediate results
+                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+                    if (output_chw) {
+                        const int n_pixels = width * height;
+                        image[pixel_idx] = __saturatef(rgb_pixel_blended.x);
+                        image[n_pixels + pixel_idx] = __saturatef(rgb_pixel_blended.y);
+                        image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel_blended.z);
+                    } else {
+                        const int base_idx = 3 * pixel_idx;
+                        image[base_idx] = __saturatef(rgb_pixel_blended.x);
+                        image[base_idx + 1] = __saturatef(rgb_pixel_blended.y);
+                        image[base_idx + 2] = __saturatef(rgb_pixel_blended.z);
+                }
+            } else {
+                // store results
+                if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
+                    if constexpr (is_lowres_tile) {
+                        for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
+                            for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
+                                const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
+                                if (output_chw) {
+                                    const int n_pixels = width * height;
+                                    image[pixel_idx] = __saturatef(rgb_pixel.x);
+                                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                                } else {
+                                    const int base_idx = 3 * pixel_idx;
+                                    image[base_idx] = __saturatef(rgb_pixel.x);
+                                    image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                                    image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                                }
                             }
+                        }
+                    } else {
+                        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+                        if (output_chw) {
+                            const int n_pixels = width * height;
+                            image[pixel_idx] = __saturatef(rgb_pixel.x);
+                            image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                            image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                        } else {
+                            const int base_idx = 3 * pixel_idx;
+                            image[base_idx] = __saturatef(rgb_pixel.x);
+                            image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                            image[base_idx + 2] = __saturatef(rgb_pixel.z);
                         }
                     }
                 } else {
@@ -243,19 +317,6 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                         image[base_idx + 1] = __saturatef(rgb_pixel.y);
                         image[base_idx + 2] = __saturatef(rgb_pixel.z);
                     }
-                }
-            } else {
-                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-                if (output_chw) {
-                    const int n_pixels = width * height;
-                    image[pixel_idx] = __saturatef(rgb_pixel.x);
-                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
-                } else {
-                    const int base_idx = 3 * pixel_idx;
-                    image[base_idx] = __saturatef(rgb_pixel.x);
-                    image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                    image[base_idx + 2] = __saturatef(rgb_pixel.z);
                 }
             }
 
@@ -299,14 +360,14 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                 // Write the average color back to the pixels in the tile
                 if (output_chw) {
                     const int n_pixels = width * height;
-                    image[pixel_idx] = __saturatef(image[pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                    image[n_pixels + pixel_idx] = __saturatef(image[n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                    image[2 * n_pixels + pixel_idx] = __saturatef(image[2 * n_pixels + pixel_idx] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
+                    image[pixel_idx] = __saturatef(rgb_pixel.x * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
                 } else {
                     const int base_idx = 3 * pixel_idx;
-                    image[base_idx] = __saturatef(image[base_idx] * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                    image[base_idx + 1] = __saturatef(image[base_idx + 1] * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                    image[base_idx + 2] = __saturatef(image[base_idx + 2] * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
+                    image[base_idx] = __saturatef(rgb_pixel.x * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
+                    image[base_idx + 1] = __saturatef(rgb_pixel.y * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
+                    image[base_idx + 2] = __saturatef(rgb_pixel.z * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
                 }
             }
         }
