@@ -384,7 +384,7 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             per_primitive_buffers.VPMT4,
             per_primitive_buffers.MT3,
             per_primitive_buffers.rgba,
-            image,
+            blur_periphery ? image_final : image,
             gaze_position_tiles,
             0,  // offset into partitioned tile index map
             width,
@@ -406,16 +406,33 @@ void htgs::rasterization::hybrid_blend::fast_inference(
             );
         }
         if (blur_periphery) {
-            htgs::rasterization::hybrid_blend::kernels::fast_inference::blur_cu<<<grid, block, 0, blend_periphery_stream>>>(
+            dim3 blend_grid_blur = blend_grid_periphery;
+            dim3 blend_grid_copy = blend_grid_blended;
+            blend_grid_blur.y = config::num_small_tiles_per_large_tile;
+            blend_grid_copy.y = config::num_small_tiles_per_large_tile;
+            htgs::rasterization::hybrid_blend::kernels::fast_inference::blur_cu<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
                 image,
                 image_final,
+                per_sub_tile_buffers.tile_index_map_partitioned,
+                offsets_cpu.periphery_tiles_offset,
                 width,
                 height,
                 grid_large.x,
-                gaze_position_tiles,
                 to_chw
             );
             CHECK_CUDA(config::debug_fast_inference, "blur")
+
+            htgs::rasterization::hybrid_blend::kernels::fast_inference::copy_pixels<<<blend_grid_copy, block, 0, blend_blended_tiles_stream>>>(
+                image,
+                image_final,
+                per_sub_tile_buffers.tile_index_map_partitioned,
+                offsets_cpu.blended_tiles_offset,
+                width,
+                height,
+                grid_large.x,
+                to_chw
+            );
+            CHECK_CUDA(config::debug_inference, "copy_pixels")
         }
 
         cudaStreamSynchronize(blend_fovea_stream);
