@@ -92,6 +92,14 @@ void htgs::rasterization::hybrid_blend::inference(
     const int n_tiles = grid.x * grid.y;
     const int end_bit = extract_end_bit(n_tiles);
 
+    static uint mask_width = 0;
+    static uint mask_height = 0;
+    if (grid.x != mask_width || grid.y != mask_height) {
+        mask_width = grid.x;
+        mask_height = grid.y;
+        cudaMemcpyToSymbol(c_render_mask, render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
+    }
+
     // Round gaze to nearest large tile (top left corner of tile)
     const uint2 gaze_position_tiles = make_uint2(
         static_cast<uint>(max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position->x) + config::tile_width_large / 2) / config::tile_width_large))),
@@ -126,7 +134,6 @@ void htgs::rasterization::hybrid_blend::inference(
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
-        render_mask,
         gaze_position_tiles,
         n_tiles_large,
         grid_large.x
@@ -249,7 +256,6 @@ void htgs::rasterization::hybrid_blend::inference(
             per_primitive_buffers.screen_bounds,
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
-            render_mask,
             make_int2(gaze_position_tiles.x, gaze_position_tiles.y),
             grid_large.x,
             n_primitives

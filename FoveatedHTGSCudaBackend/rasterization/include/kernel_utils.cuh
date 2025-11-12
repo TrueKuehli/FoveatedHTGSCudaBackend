@@ -1,6 +1,7 @@
 #pragma once
 
 #include "helper_math.h"
+#include <cstdint>
 
 #ifdef _WIN32
 #include <climits>
@@ -11,6 +12,7 @@ __device__ __constant__ float4 c_M3;
 __device__ __constant__ float4 c_VPM[4];
 __device__ __constant__ float3 c_cam_position;
 __device__ __constant__ float2 c_gaze_position_cuda;
+__device__ __constant__ uint32_t c_render_mask[4096];  // Sufficient for ~362x362 tiles (total 131,072)
 
 struct Mat3x3 {
     float r11, r12, r13;
