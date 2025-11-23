@@ -93,5 +93,6 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         blur_periphery,
         anti_aliasing);
 
+    if (blur_periphery) return image_final;
     return image;
 }
