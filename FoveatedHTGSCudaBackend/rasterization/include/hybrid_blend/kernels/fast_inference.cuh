@@ -83,7 +83,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, int K_blended, bool is_lowres_tile, PeripheryInterpolationMode periphery_mode>
+    template <int K, int K_blended, bool is_lowres_tile, BackgroundModelType background_model, PeripheryInterpolationMode periphery_mode>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -93,6 +93,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
         const float4* primitive_VPMT4,
         const float4* primitive_MT3,
         const float4* primitive_rgba,
+        const float* background_model_data,
         float* image,
         const uint2 gaze_position_tiles,
         const uint tile_offset,
@@ -255,6 +256,47 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                 if (!done_blended && rgba_premultiplied_tail_blended.w >= config::min_alpha_threshold) {
                     const float weight_tail_blended = transmittance_core_blended * (1.0f - transmittance_tail_blended);
                     rgb_pixel_blended += weight_tail_blended * (1.0f / rgba_premultiplied_tail_blended.w) * make_float3(rgba_premultiplied_tail_blended);
+                }
+            }
+            // blend background model
+            if constexpr (background_model == BackgroundModelType::SH) {
+                const float weight_background = transmittance_core * transmittance_tail;
+                float3 bg_eval;
+
+                if constexpr (is_blended_tile) {
+                    const float weight_background_blended = transmittance_core_blended * transmittance_tail_blended;
+                    // TODO: Does a larger threshold in the periphery work to improve performance?
+                    if (weight_background_blended >= config::transmittance_threshold) {
+                        bg_eval = eval_sh_background_model(pixel_x, pixel_y);
+                        rgb_pixel_blended += weight_background_blended * bg_eval;
+                    }
+                } else {
+                    bg_eval = eval_sh_background_model(pixel_x, pixel_y);
+                }
+
+                if (weight_background >= config::transmittance_threshold) {
+                    rgb_pixel += weight_background * bg_eval;
+                }
+            } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
+                const float weight_background = transmittance_core * transmittance_tail;
+                float3 bg_eval;
+
+                if constexpr (is_blended_tile) {
+                    const float weight_background_blended = transmittance_core_blended * transmittance_tail_blended;
+                    if (weight_background_blended >= config::transmittance_threshold) {
+                        bg_eval = eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
+                            pixel_x, pixel_y, background_model_data
+                        );
+                        rgb_pixel_blended += weight_background_blended * bg_eval;
+                    }
+                } else {
+                    bg_eval = eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
+                        pixel_x, pixel_y, background_model_data
+                    );
+                }
+
+                if (weight_background >= config::transmittance_threshold) {
+                    rgb_pixel += weight_background * bg_eval;
                 }
             }
             if constexpr (is_blended_tile) {

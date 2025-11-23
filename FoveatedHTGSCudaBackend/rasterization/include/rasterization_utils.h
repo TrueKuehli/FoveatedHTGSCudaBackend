@@ -6,6 +6,13 @@ enum class PeripheryInterpolationMode {
 };
 
 
+enum class BackgroundModelType {
+    NONE = 0,
+    SH = 1,
+    TEXTURE = 2,
+};
+
+
 inline __host__ int extract_end_bit(
     uint n)
 {

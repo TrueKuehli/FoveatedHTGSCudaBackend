@@ -10,8 +10,10 @@
 
 __device__ __constant__ float4 c_M3;
 __device__ __constant__ float4 c_VPM[4];
+__device__ __constant__ float4 c_VPR_inv[4];
 __device__ __constant__ float3 c_cam_position;
 __device__ __constant__ float2 c_gaze_position_cuda;
+__device__ __constant__ float3 c_background_sh_coeff[16];
 __device__ __constant__ uint32_t c_render_mask[4096];  // Sufficient for ~362x362 tiles (total 131,072)
 
 struct Mat3x3 {
@@ -287,4 +289,78 @@ __forceinline__ __device__ float3 convert_sh_to_rgb(
         fmaxf(0.0f, result.y),
         fmaxf(0.0f, result.z)
     };
+}
+
+
+__forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, const float pixel_y) {
+    // computation adapted from https://github.com/NVlabs/tiny-cuda-nn/blob/212104156403bd87616c1a4f73a1c5f2c2e172a9/include/tiny-cuda-nn/common_device.h#L340
+    const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
+    const float3 pixel_coords_transformed = normalize(make_float3(
+        dot(c_VPR_inv[0], pixel_coords),
+        dot(c_VPR_inv[1], pixel_coords),
+        dot(c_VPR_inv[2], pixel_coords)
+    ));
+    
+    // TODO: Test if branching is faster (since that could save some computations for any grid cells that are fully below the horizon)
+    const float x = pixel_coords_transformed.x;// * 0.5f + 0.5f;
+    const float y = pixel_coords_transformed.y;// * 0.5f + 0.5f;
+    const float z = pixel_coords_transformed.z;// * 0.5f + 0.5f;
+    
+    const float xx = x * x, yy = y * y, zz = z * z;
+    const float xy = x * y, xz = x * z, yz = y * z;
+    const float3 sh_eval = 0.5f + 0.28209479177387814f * c_background_sh_coeff[0]
+                    + (-0.48860251190291987f * y) * c_background_sh_coeff[1]
+                    + (0.48860251190291987f * z) * c_background_sh_coeff[2]
+                    + (-0.48860251190291987f * x) * c_background_sh_coeff[3];
+                    + (1.0925484305920792f * xy) * c_background_sh_coeff[4]
+                    + (-1.0925484305920792f * yz) * c_background_sh_coeff[5]
+                    + (0.94617469575755997f * zz - 0.31539156525251999f) * c_background_sh_coeff[6]
+                    + (-1.0925484305920792f * xz) * c_background_sh_coeff[7]
+                    + (0.54627421529603959f * xx - 0.54627421529603959f * yy) * c_background_sh_coeff[8];
+                    + (0.59004358992664352f * y * (-3.0f * xx + yy)) * c_background_sh_coeff[9]
+                    + (2.8906114426405538f * xy * z) * c_background_sh_coeff[10]
+                    + (0.45704579946446572f * y * (1.0f - 5.0f * zz)) * c_background_sh_coeff[11]
+                    + (0.3731763325901154f * z * (5.0f * zz - 3.0f)) * c_background_sh_coeff[12]
+                    + (0.45704579946446572f * x * (1.0f - 5.0f * zz)) * c_background_sh_coeff[13]
+                    + (1.4453057213202769f * z * (xx - yy)) * c_background_sh_coeff[14]
+                    + (0.59004358992664352f * x * (-xx + 3.0f * yy)) * c_background_sh_coeff[15];
+    const float3 result = make_float3(
+        __tanhf(sh_eval.x) * 0.5 + 0.5,
+        __tanhf(sh_eval.y) * 0.5 + 0.5,
+        __tanhf(sh_eval.z) * 0.5 + 0.5
+    );
+    
+    // Return black below the horizon
+    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
+        __saturatef(result.x),
+        __saturatef(result.y),
+        __saturatef(result.z)
+    );
+}
+
+
+template<int width, int height>
+__forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x, const float pixel_y, const float* texture_data) {
+    // computation adapted from https://github.com/NVlabs/tiny-cuda-nn/blob/212104156403bd87616c1a4f73a1c5f2c2e172a9/include/tiny-cuda-nn/common_device.h#L340
+    const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
+    const float3 pixel_coords_transformed = normalize(make_float3(
+        dot(c_VPR_inv[0], pixel_coords),
+        dot(c_VPR_inv[1], pixel_coords),
+        dot(c_VPR_inv[2], pixel_coords)
+    ));
+    // TODO: Test if branching is faster (since that could save some computations / memory accesses for any grid cells that are fully below the horizon)
+    const float2 equirectangular_coords = make_float2(
+        atan2f(pixel_coords_transformed.x, pixel_coords_transformed.z) / M_PIf * 0.5f + 0.5f,
+        asinf(-pixel_coords_transformed.y) / (0.5f * M_PIf) * 0.5f + 0.5f
+    );
+    const int texture_x = __float2uint_rd(equirectangular_coords.x * width) % width;
+    const int texture_y = __float2uint_rd(equirectangular_coords.y * height) % height;
+    const int texture_idx = texture_x + texture_y * width;
+    
+    // Return black below the horizon
+    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
+        texture_data[texture_idx],
+        texture_data[texture_idx + 1 * width * height],
+        texture_data[texture_idx + 2 * width * height]
+    );
 }

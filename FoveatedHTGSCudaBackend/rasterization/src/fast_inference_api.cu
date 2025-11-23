@@ -18,11 +18,14 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const torch::Tensor& sh_rest,
     const torch::Tensor& M,
     const torch::Tensor& VPM,
+    const torch::Tensor& VPR_inv,
     const torch::Tensor& cam_position,
     const torch::Tensor& gaze_position,
     const torch::Tensor& render_mask,
     const torch::Tensor& render_mask_area_table,
     const torch::Tensor& fovea_mask_area_table,
+    const torch::Tensor& background_model_data,
+    const int background_model_type,
     const int periphery_interpolation_mode,
     const int K,
     const int active_sh_bases,
@@ -38,6 +41,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
     const bool anti_aliasing)
 {
     const PeripheryInterpolationMode periphery_mode = static_cast<PeripheryInterpolationMode>(periphery_interpolation_mode);
+    const BackgroundModelType background_model = static_cast<BackgroundModelType>(background_model_type);
     const int n_primitives = positions.size(0);
     const int total_sh_bases = sh_rest.size(1);
     const torch::TensorOptions float_options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
@@ -70,6 +74,7 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         reinterpret_cast<const float3*>(sh_rest.contiguous().data_ptr<float>()),
         reinterpret_cast<const float4*>(M.contiguous().data_ptr<float>()),
         reinterpret_cast<const float4*>(VPM.contiguous().data_ptr<float>()),
+        reinterpret_cast<const float4*>(VPR_inv.contiguous().data_ptr<float>()),
         reinterpret_cast<const float3*>(cam_position.contiguous().data_ptr<float>()),
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
         image.data_ptr<float>(),
@@ -77,6 +82,8 @@ torch::Tensor htgs::rasterization::fast_inference_wrapper(
         render_mask.data_ptr<uint>(),
         render_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>(),
+        background_model_data.data_ptr<float>(),
+        background_model,
         periphery_mode,
         K,
         n_primitives,

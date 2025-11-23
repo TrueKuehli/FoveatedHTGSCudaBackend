@@ -33,6 +33,9 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF int blend_radius_tiles = blend_radius_raw / tile_width_large; // in tiles, rounded down
     DEF int blend_radius = blend_radius_tiles * tile_width_large; // in pixels
 
+    DEF int environment_map_width = 2000;
+    DEF int environment_map_height = 1000;
+
     // block size constants
     DEF int block_size_create_tile_index_map = 256;
     DEF int block_size_preprocess = 256;

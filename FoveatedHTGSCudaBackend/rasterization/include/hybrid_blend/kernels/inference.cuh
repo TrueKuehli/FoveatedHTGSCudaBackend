@@ -82,7 +82,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, bool is_lowres_tile, bool is_blended_tile, PeripheryInterpolationMode periphery_mode>
+    template <int K, bool is_lowres_tile, bool is_blended_tile, BackgroundModelType background_model, PeripheryInterpolationMode periphery_mode>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -92,6 +92,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
         const float4* primitive_VPMT4,
         const float4* primitive_MT3,
         const float4* primitive_rgba,
+        const float* background_model_data,
         float* image,
         float* depths,
         const uint2 gaze_position_tiles,
@@ -223,8 +224,23 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
                 }
             }
             if (!use_median_depth) depth_pixel = (total_alpha > 0.0f) ? depth_pixel / total_alpha : 0.0f;
+            // blend background model
+            if constexpr (background_model == BackgroundModelType::SH) {
+                const float weight_background = transmittance_core * transmittance_tail;
+                if (weight_background >= config::transmittance_threshold) {
+                    rgb_pixel += weight_background * eval_sh_background_model(pixel_x, pixel_y);
+                }
+                if (weight_background > 1.0f) rgb_pixel = make_float3(1.0f, 0.0f, 1.0f);
+            } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
+                const float weight_background = transmittance_core * transmittance_tail;
+                if (weight_background >= config::transmittance_threshold) {
+                    rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
+                        pixel_x, pixel_y, background_model_data
+                    );
+                }
+            }
+            
             // store results
-
             if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
                 if constexpr (is_lowres_tile) {
                     for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {

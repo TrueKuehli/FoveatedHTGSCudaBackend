@@ -11,14 +11,23 @@ class PeripheryInterpolationMode(Enum):
     LINEAR = 1
 
 
+class BackgroundModel(Enum):
+    NONE = 0
+    SH = 1
+    TEXTURE = 2
+
+
 class RasterizerSettings(NamedTuple):
     M: torch.Tensor  # affine transformation from model/world space to camera/view space
     VPM: torch.Tensor  # homogeneous transformation from model/world space to screen space
+    VPR_inv: torch.Tensor  # homogeneous transformation from screen space to model/world space, ignoring translation
     cam_position: torch.Tensor  # camera position in world space
     gaze_position: torch.Tensor  # gaze position in screen space
     render_mask: torch.Tensor  # precomputed mask for culling invisible tiles
     render_mask_area_table: torch.Tensor  # precomputed table for culling invisible tiles
     fovea_mask_area_table: torch.Tensor  # precomputed table for the shape of the sharp foveated area
+    background_model_data: torch.Tensor  # background model specific data
+    background_model: BackgroundModel
     periphery_interpolation_mode: PeripheryInterpolationMode
     K: int  # size of the core for hybrid transparency
     active_sh_bases: int  # number of spherical harmonics bases to use for color computation
@@ -34,11 +43,14 @@ class RasterizerSettings(NamedTuple):
         return (
             self.M,
             self.VPM,
+            self.VPR_inv,
             self.cam_position,
             self.gaze_position,
             self.render_mask,
             self.render_mask_area_table,
             self.fovea_mask_area_table,
+            self.background_model_data,
+            self.background_model.value,
             self.periphery_interpolation_mode.value,
             self.K,
             self.active_sh_bases,
