@@ -194,6 +194,11 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                                 __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y)
                             );
                             transmittance_tail_blended *= 1.0f - __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y);
+                        } else {
+                            const float4 primitive_rgba_premultiplied_core = make_float4(__half2float(rgba_premultiplied_rg.x), __half2float(rgba_premultiplied_rg.y), __half2float(rgba_premultiplied_ba.x), __half2float(rgba_premultiplied_ba.y));
+                            const float primitive_transmittance_core = 1.0f - __half2float(rgba_premultiplied_ba.y);
+                            rgba_premultiplied_tail_blended += primitive_rgba_premultiplied_core;
+                            transmittance_tail_blended *= primitive_transmittance_core;
                         }
                     }
 
@@ -211,10 +216,6 @@ namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
                     const float primitive_transmittance_tail = 1.0f - __half2float(rgba_premultiplied_ba.y);
                     rgba_premultiplied_tail += primitive_rgba_premultiplied_tail;
                     transmittance_tail *= primitive_transmittance_tail;
-                    if constexpr (is_blended_tile) {
-                        rgba_premultiplied_tail_blended += primitive_rgba_premultiplied_tail;
-                        transmittance_tail_blended *= primitive_transmittance_tail;
-                    }
                 }
             }
         }
