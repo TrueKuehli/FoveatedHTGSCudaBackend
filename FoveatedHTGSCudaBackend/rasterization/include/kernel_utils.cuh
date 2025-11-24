@@ -302,21 +302,19 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
     ));
     
     // TODO: Test if branching is faster (since that could save some computations for any grid cells that are fully below the horizon)
-    const float x = pixel_coords_transformed.x;// * 0.5f + 0.5f;
-    const float y = pixel_coords_transformed.y;// * 0.5f + 0.5f;
-    const float z = pixel_coords_transformed.z;// * 0.5f + 0.5f;
-    
+    auto [x, y, z] = normalize(pixel_coords_transformed);
     const float xx = x * x, yy = y * y, zz = z * z;
     const float xy = x * y, xz = x * z, yz = y * z;
-    const float3 sh_eval = 0.5f + 0.28209479177387814f * c_background_sh_coeff[0]
+    // TODO: Use FastGS SH eval code
+    const float3 sh_eval = 0.28209479177387814f * c_background_sh_coeff[0]
                     + (-0.48860251190291987f * y) * c_background_sh_coeff[1]
                     + (0.48860251190291987f * z) * c_background_sh_coeff[2]
-                    + (-0.48860251190291987f * x) * c_background_sh_coeff[3];
+                    + (-0.48860251190291987f * x) * c_background_sh_coeff[3]
                     + (1.0925484305920792f * xy) * c_background_sh_coeff[4]
                     + (-1.0925484305920792f * yz) * c_background_sh_coeff[5]
                     + (0.94617469575755997f * zz - 0.31539156525251999f) * c_background_sh_coeff[6]
                     + (-1.0925484305920792f * xz) * c_background_sh_coeff[7]
-                    + (0.54627421529603959f * xx - 0.54627421529603959f * yy) * c_background_sh_coeff[8];
+                    + (0.54627421529603959f * xx - 0.54627421529603959f * yy) * c_background_sh_coeff[8]
                     + (0.59004358992664352f * y * (-3.0f * xx + yy)) * c_background_sh_coeff[9]
                     + (2.8906114426405538f * xy * z) * c_background_sh_coeff[10]
                     + (0.45704579946446572f * y * (1.0f - 5.0f * zz)) * c_background_sh_coeff[11]
@@ -325,9 +323,9 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
                     + (1.4453057213202769f * z * (xx - yy)) * c_background_sh_coeff[14]
                     + (0.59004358992664352f * x * (-xx + 3.0f * yy)) * c_background_sh_coeff[15];
     const float3 result = make_float3(
-        __tanhf(sh_eval.x) * 0.5 + 0.5,
-        __tanhf(sh_eval.y) * 0.5 + 0.5,
-        __tanhf(sh_eval.z) * 0.5 + 0.5
+        tanhf(sh_eval.x) * 0.5f + 0.5f,
+        tanhf(sh_eval.y) * 0.5f + 0.5f,
+        tanhf(sh_eval.z) * 0.5f + 0.5f
     );
     
     // Return black below the horizon
