@@ -336,11 +336,13 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
     );
 
     // Return black below the horizon
-    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
+    const float3 color = make_float3(
         __saturatef(result.x),
         __saturatef(result.y),
         __saturatef(result.z)
     );
+    return pixel_coords_transformed.y > 0.1f ? make_float3(0.0f, 0.0f, 0.0f) :
+        (pixel_coords_transformed.y > 0.0f ? (1.0f - pixel_coords_transformed.y / 0.1f) * color : color);
 }
 
 
@@ -403,5 +405,6 @@ __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x,
     }
 
     // Return black below the horizon
-    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : color;
+    return pixel_coords_transformed.y > 0.1f ? make_float3(0.0f, 0.0f, 0.0f) :
+        (pixel_coords_transformed.y > 0.0f ? (1.0f - pixel_coords_transformed.y / 0.1f) * color : color);
 }
