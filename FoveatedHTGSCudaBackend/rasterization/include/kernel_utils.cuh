@@ -353,19 +353,55 @@ __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x,
         dot(c_VPR_inv[1], pixel_coords),
         dot(c_VPR_inv[2], pixel_coords)
     ));
+
     // TODO: Test if branching is faster (since that could save some computations / memory accesses for any grid cells that are fully below the horizon)
     const float2 equirectangular_coords = make_float2(
         atan2f(pixel_coords_transformed.x, pixel_coords_transformed.z) / M_PIf * 0.5f + 0.5f,
         asinf(-pixel_coords_transformed.y) / (0.5f * M_PIf) * 0.5f + 0.5f
     );
-    const int texture_x = __float2uint_rd(equirectangular_coords.x * width) % width;
-    const int texture_y = __float2uint_rd(equirectangular_coords.y * height) % height;
-    const int texture_idx = texture_x + texture_y * width;
+
+    // Bilinear interpolation
+    const float tex_x = equirectangular_coords.x * width - 0.5f;
+    const float tex_y = equirectangular_coords.y * height - 0.5f;
+
+    const int x0 = __float2int_rd(tex_x);
+    const int y0 = __float2int_rd(tex_y);
+    const int x1 = x0 + 1;
+    const int y1 = y0 + 1;
+
+    const float fx = tex_x - x0;
+    const float fy = tex_y - y0;
+
+    // Wrap coordinates for seamless horizontal tiling
+    const int x0_wrapped = (x0 % width + width) % width;
+    const int x1_wrapped = (x1 % width + width) % width;
+    const int y0_clamped = max(0, min(height - 1, y0));
+    const int y1_clamped = max(0, min(height - 1, y1));
+
+    // Get texture indices for the four corners
+    const int idx00 = x0_wrapped + y0_clamped * width;
+    const int idx10 = x1_wrapped + y0_clamped * width;
+    const int idx01 = x0_wrapped + y1_clamped * width;
+    const int idx11 = x1_wrapped + y1_clamped * width;
+
+    // Bilinear interpolation for each color channel
+    float3 color = make_float3(0.0f, 0.0f, 0.0f);
+    for (int channel = 0; channel < 3; ++channel) {
+        const int offset = channel * width * height;
+        const float c00 = texture_data[idx00 + offset];
+        const float c10 = texture_data[idx10 + offset];
+        const float c01 = texture_data[idx01 + offset];
+        const float c11 = texture_data[idx11 + offset];
+
+        const float c0 = c00 * (1.0f - fx) + c10 * fx;
+        const float c1 = c01 * (1.0f - fx) + c11 * fx;
+        const float c = c0 * (1.0f - fy) + c1 * fy;
+
+        if (channel == 0) color.x = c;
+        else if (channel == 1) color.y = c;
+        else color.z = c;
+    }
 
     // Return black below the horizon
-    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
-        texture_data[texture_idx],
-        texture_data[texture_idx + 1 * width * height],
-        texture_data[texture_idx + 2 * width * height]
-    );
+    return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : color;
 }
