@@ -16,7 +16,7 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF float max_cutoff_sq = 11.0825270903f; // logf(min_alpha_threshold_rcp * min_alpha_threshold_rcp)
     DEF float min_alpha_threshold_core_rcp = 20.0f;
     DEF float min_alpha_threshold_core = 1.0f / min_alpha_threshold_core_rcp; // 0.05
-    DEF float aa_kernel_size = 0.5f;  // Kernel size for anti-aliasing, AAA Gaussians uses 0.3
+    DEF float aa_kernel_size = 0.3f;  // Kernel size for anti-aliasing, AAA Gaussians uses 0.3
 
     DEF int tile_width_small = 8;
     DEF int tile_height_small = 8;
