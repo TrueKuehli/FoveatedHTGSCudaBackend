@@ -1,5 +1,12 @@
 #pragma once
 
+// Windows needs some special princess treatment
+#ifdef _WIN32
+    #ifndef M_PIf
+    #define M_PIf 3.14159265358979323846f
+    #endif
+#endif
+
 #include "helper_math.h"
 #include <cstdint>
 
@@ -300,7 +307,7 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
         dot(c_VPR_inv[1], pixel_coords),
         dot(c_VPR_inv[2], pixel_coords)
     ));
-    
+
     // TODO: Test if branching is faster (since that could save some computations for any grid cells that are fully below the horizon)
     auto [x, y, z] = normalize(pixel_coords_transformed);
     const float xx = x * x, yy = y * y, zz = z * z;
@@ -327,7 +334,7 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
         tanhf(sh_eval.y) * 0.5f + 0.5f,
         tanhf(sh_eval.z) * 0.5f + 0.5f
     );
-    
+
     // Return black below the horizon
     return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
         __saturatef(result.x),
@@ -354,7 +361,7 @@ __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x,
     const int texture_x = __float2uint_rd(equirectangular_coords.x * width) % width;
     const int texture_y = __float2uint_rd(equirectangular_coords.y * height) % height;
     const int texture_idx = texture_x + texture_y * width;
-    
+
     // Return black below the horizon
     return pixel_coords_transformed.y > 0 ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(
         texture_data[texture_idx],
