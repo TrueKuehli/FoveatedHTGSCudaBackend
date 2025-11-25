@@ -480,13 +480,13 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
         cudaStreamSynchronize(blend_periphery_stream);
     }, buffer_variant);
 
-    // Draw a red dot at the gaze position for visualization
-    const dim3 dot_grid(1, 1, 1);
-    const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
-    htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
-        blur_periphery ? image_final : image,
-        width,
-        height,
-        to_chw
-    );
+    // // Draw a red dot at the gaze position for visualization
+    // const dim3 dot_grid(1, 1, 1);
+    // const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
+    // htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
+    //     blur_periphery ? image_final : image,
+    //     width,
+    //     height,
+    //     to_chw
+    // );
 }
