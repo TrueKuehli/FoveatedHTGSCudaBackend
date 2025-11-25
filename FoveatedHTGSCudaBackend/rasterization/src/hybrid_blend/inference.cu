@@ -129,13 +129,14 @@ void htgs::rasterization::hybrid_blend::inference(
     const int n_tiles = grid.x * grid.y;
     const int end_bit = extract_end_bit(n_tiles);
 
-    static uint mask_width = 0;
-    static uint mask_height = 0;
-    if (grid.x != mask_width || grid.y != mask_height) {
-        mask_width = grid.x;
-        mask_height = grid.y;
+    // TODO: Left and Right eye have different mask, so we need to have separate storage for each eye, or just forgoe constant memory here
+    // static uint mask_width = 0;
+    // static uint mask_height = 0;
+    // if (grid.x != mask_width || grid.y != mask_height) {
+    //     mask_width = grid.x;
+    //     mask_height = grid.y;
         cudaMemcpyToSymbol(c_render_mask, render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
-    }
+    // }
 
     // Round gaze to nearest large tile (top left corner of tile)
     const uint2 gaze_position_tiles = make_uint2(
