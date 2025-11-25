@@ -3,7 +3,7 @@
 #include <torch/extension.h>
 #include <tuple>
 
-namespace htgs::rasterization {
+namespace htgs_foveated::rasterization {
     std::tuple<torch::Tensor, torch::Tensor>
     inference_wrapper(
         const torch::Tensor& positions,

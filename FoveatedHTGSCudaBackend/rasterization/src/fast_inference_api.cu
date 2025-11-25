@@ -9,7 +9,7 @@
 #include <functional>
 
 
-torch::Tensor htgs::rasterization::fast_inference_wrapper(
+torch::Tensor htgs_foveated::rasterization::fast_inference_wrapper(
     const torch::Tensor& positions,
     const torch::Tensor& scales,
     const torch::Tensor& rotations,

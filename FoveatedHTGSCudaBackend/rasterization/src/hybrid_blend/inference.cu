@@ -21,12 +21,12 @@ void blend_k_templated_periphery_mode(
     const int K,
     Args&&... kernel_args)
 {
-    if (K >= 32) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<32, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 16) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<16, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 8) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<8, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 4) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<4, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 2) htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<2, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else htgs::rasterization::hybrid_blend::kernels::inference::blend_cu<1, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    if (K >= 32) htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<32, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 16) htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<16, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 8) htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<8, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 4) htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<4, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 2) htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<2, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else htgs_foveated::rasterization::hybrid_blend::kernels::inference::blend_cu<1, is_lowres_tile, is_blended_tile, background_model, periphery_mode><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
 }
 
 template <bool is_lowres_tile, bool is_blended_tile, BackgroundModelType background_model, typename... Args>
@@ -72,7 +72,7 @@ void blend_k_templated(
 }
 
 
-void htgs::rasterization::hybrid_blend::inference(
+void htgs_foveated::rasterization::hybrid_blend::inference(
     std::function<char* (size_t)> per_primitive_buffers_func,
     std::function<char* (size_t)> per_tile_buffers_func,
     std::function<char* (size_t)> per_subtile_buffers_func,
@@ -467,7 +467,7 @@ void htgs::rasterization::hybrid_blend::inference(
     // Draw a red dot at the gaze position for visualization
     const dim3 dot_grid(1, 1, 1);
     const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
-    htgs::rasterization::hybrid_blend::kernels::inference::visualize_gaze<<<dot_grid, dot_block>>>(
+    htgs_foveated::rasterization::hybrid_blend::kernels::inference::visualize_gaze<<<dot_grid, dot_block>>>(
         blur_periphery ? image_final : image,
         width,
         height,

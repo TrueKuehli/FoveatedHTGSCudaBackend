@@ -4,7 +4,7 @@
 #include "helper_math.h"
 #include <cub/cub.cuh>
 
-namespace htgs::rasterization::hybrid_blend {
+namespace htgs_foveated::rasterization::hybrid_blend {
 
     template <typename T>
     static void obtain(char*& blob, T*& ptr, std::size_t count, std::size_t alignment) {
@@ -13,7 +13,7 @@ namespace htgs::rasterization::hybrid_blend {
         blob = reinterpret_cast<char*>(ptr + count);
     }
 
-    template<typename T, typename... Args> 
+    template<typename T, typename... Args>
 	size_t required(size_t P, Args... args){
 		char* size = nullptr;
 		T::from_blob(size, P, args...);
@@ -60,7 +60,7 @@ namespace htgs::rasterization::hybrid_blend {
         char* cub_workspace;
         cub::DoubleBuffer<KeyT> keys;
         cub::DoubleBuffer<uint> primitive_indices;
-    
+
         static PerInstanceBuffers from_blob(char*& blob, size_t n_instances, int end_bit) {
             PerInstanceBuffers buffers;
             KeyT* keys_current;

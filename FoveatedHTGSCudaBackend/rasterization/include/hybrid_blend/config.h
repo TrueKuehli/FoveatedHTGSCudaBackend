@@ -4,7 +4,7 @@
 
 #define DEF inline constexpr
 
-namespace htgs::rasterization::hybrid_blend::config {
+namespace htgs_foveated::rasterization::hybrid_blend::config {
     // debugging constants
     DEF bool debug_inference = false;
     DEF bool debug_fast_inference = false;
@@ -50,6 +50,6 @@ namespace htgs::rasterization::hybrid_blend::config {
     DEF bool gaze_visualization_circular = true;
 }
 
-namespace config = htgs::rasterization::hybrid_blend::config;
+namespace config = htgs_foveated::rasterization::hybrid_blend::config;
 
 #undef DEF

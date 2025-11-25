@@ -2,7 +2,7 @@
 
 #include <torch/extension.h>
 
-namespace htgs::rasterization {
+namespace htgs_foveated::rasterization {
 
     torch::Tensor fast_inference_wrapper(
         const torch::Tensor& positions,

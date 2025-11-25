@@ -6,7 +6,7 @@
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 
-namespace htgs::rasterization::hybrid_blend::kernels::fast_inference {
+namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
 
     template<bool anti_aliasing>
     __global__ void preprocess_cu(

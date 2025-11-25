@@ -4,7 +4,7 @@
 #include "rasterization_utils.h"
 #include <functional>
 
-namespace htgs::rasterization::hybrid_blend {
+namespace htgs_foveated::rasterization::hybrid_blend {
 
     void inference(
         std::function<char* (size_t)> per_primitive_buffers_func,

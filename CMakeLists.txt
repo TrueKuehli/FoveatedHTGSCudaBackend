@@ -21,8 +21,7 @@ file(GLOB SOURCES
 add_library(FoveatedHTGSRasterizer STATIC ${SOURCES})
 
 set(FoveatedHTGSRasterizer_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend
     PARENT_SCOPE
 )
 target_include_directories(FoveatedHTGSRasterizer PUBLIC

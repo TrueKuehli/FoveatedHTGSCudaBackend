@@ -3,7 +3,7 @@
 #include "helper_math.h"
 #include <cstdint>
 
-namespace htgs::rasterization::shared_kernels {
+namespace htgs_foveated::rasterization::shared_kernels {
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(
         const KeyT* instance_keys,

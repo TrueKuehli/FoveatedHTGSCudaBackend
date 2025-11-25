@@ -10,7 +10,7 @@
 #include <tuple>
 
 
-std::tuple<torch::Tensor, torch::Tensor> htgs::rasterization::inference_wrapper(
+std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference_wrapper(
     const torch::Tensor& positions,
     const torch::Tensor& scales,
     const torch::Tensor& rotations,

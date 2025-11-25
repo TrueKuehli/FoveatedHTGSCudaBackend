@@ -5,7 +5,7 @@
 #include "kernel_utils.cuh"
 #include <cstdint>
 
-namespace htgs::rasterization::shared_kernels {
+namespace htgs_foveated::rasterization::shared_kernels {
 
     template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles>
     __global__ inline void create_instances_cu(

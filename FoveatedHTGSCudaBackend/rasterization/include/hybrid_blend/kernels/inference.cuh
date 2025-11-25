@@ -5,7 +5,7 @@
 #include "hybrid_blend/config.h"
 #include <cooperative_groups.h>
 
-namespace htgs::rasterization::hybrid_blend::kernels::inference {
+namespace htgs_foveated::rasterization::hybrid_blend::kernels::inference {
 
     template<bool anti_aliasing>
     __global__ void preprocess_cu(
@@ -239,7 +239,7 @@ namespace htgs::rasterization::hybrid_blend::kernels::inference {
                     );
                 }
             }
-            
+
             // store results
             if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
                 if constexpr (is_lowres_tile) {
