@@ -366,7 +366,7 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
         const dim3 blend_grid_blended(num_tiles_blended, 1, 1);
         // Blended tiles and periphery required to do hole filling, so queue those kernel launches first
         if (num_tiles_blended > 0) {
-            blend_k_templated<false>(blend_grid_blended, block, blend_blended_tiles_stream, K, K / 2, background_model_type, periphery_mode,
+            blend_k_templated<false>(blend_grid_blended, block, blend_blended_tiles_stream, K, K, background_model_type, periphery_mode,
                 per_sub_tile_buffers.tile_index_map_partitioned,
                 per_sub_tile_buffers.instance_ranges,
                 per_instance_buffers.primitive_indices.Current(),
@@ -387,7 +387,7 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
             CHECK_CUDA(config::debug_fast_inference, "blend_blended_tiles")
         }
         if (num_tiles_periphery > 0) {
-            blend_k_templated<true>(blend_grid_periphery, block, blend_periphery_stream, K / 2, K / 2, background_model_type, periphery_mode,
+            blend_k_templated<true>(blend_grid_periphery, block, blend_periphery_stream, K, K, background_model_type, periphery_mode,
                 per_sub_tile_buffers.tile_index_map_partitioned,
                 per_sub_tile_buffers.instance_ranges,
                 per_instance_buffers.primitive_indices.Current(),
