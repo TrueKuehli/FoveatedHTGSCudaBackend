@@ -479,14 +479,30 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
         cudaStreamSynchronize(blend_fovea_stream);
         cudaStreamSynchronize(blend_periphery_stream);
     }, buffer_variant);
+}
 
-    // // Draw a red dot at the gaze position for visualization
-    // const dim3 dot_grid(1, 1, 1);
-    // const dim3 dot_block(config::gaze_visualization_width, config::gaze_visualization_width, 1);
-    // htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
-    //     blur_periphery ? image_final : image,
-    //     width,
-    //     height,
-    //     to_chw
-    // );
+
+void htgs_foveated::rasterization::hybrid_blend::renderGazePosition(
+    float* image,
+    const int width,
+    const int height,
+    const float2* gaze_position,
+    const bool to_chw
+) {
+    const float2 gaze_position_clamped = make_float2(
+        clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
+        clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
+    );
+    cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
+    cudaMemset(image, 0, sizeof(float) * width * height * 3);
+
+    // Draw a red dot at the gaze position for visualization
+    const dim3 dot_grid(div_round_up(config::gaze_visualization_width, config::tile_width_small), div_round_up(config::gaze_visualization_width, config::tile_width_small), 1);
+    const dim3 dot_block(config::tile_width_small, config::tile_width_small, 1);
+    htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::visualize_gaze<<<dot_grid, dot_block>>>(
+        image,
+        width,
+        height,
+        to_chw
+    );
 }

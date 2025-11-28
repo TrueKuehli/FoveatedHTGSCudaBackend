@@ -627,10 +627,11 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         const uint height,
         const bool output_chw
     ) {
+        const dim3 group_index = cooperative_groups::this_thread_block().group_index();
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const dim3 thread_index = block.thread_index();
-        const int x_off = thread_index.x - config::gaze_visualization_width / 2;
-        const int y_off = thread_index.y - config::gaze_visualization_width / 2;
+        const int x_off = group_index.x * config::tile_width_small + thread_index.x - config::gaze_visualization_width / 2;
+        const int y_off = group_index.y * config::tile_width_small + thread_index.y - config::gaze_visualization_width / 2;
 
         if constexpr (config::gaze_visualization_circular) {
             if (x_off * x_off + y_off * y_off > (config::gaze_visualization_width / 2) * (config::gaze_visualization_width / 2)) return;

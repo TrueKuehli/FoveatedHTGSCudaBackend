@@ -45,4 +45,11 @@ namespace htgs_foveated::rasterization::hybrid_blend {
         const bool blur_periphery,
         const bool anti_aliasing);
 
+    void renderGazePosition(
+        float* image,
+        const int width,
+        const int height,
+        const float2* gaze_position,
+        const bool to_chw);
+
 }
