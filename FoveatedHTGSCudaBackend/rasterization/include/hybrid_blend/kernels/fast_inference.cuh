@@ -2,13 +2,14 @@
 
 #include "helper_math.h"
 #include "kernel_utils.cuh"
+#include "kernel_utils_aaa.cuh"
 #include "hybrid_blend/config.h"
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 
 namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
 
-    template<bool anti_aliasing>
+    template<bool aaa_mode>
     __global__ void preprocess_cu(
         const float3* positions,
         const float3* scales,
@@ -31,8 +32,12 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         const uint active_sh_bases,
         const uint total_sh_bases,
         const uint2 gaze_position,
+        const float width,
+        const float height,
         const float focal_x,
         const float focal_y,
+        const float center_x,
+        const float center_y,
         const float near_plane,
         const float far_plane,
         const float scale_modifier)
@@ -42,24 +47,43 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
 
         primitive_n_touched_tiles[primitive_idx] = 0;
 
-        // transform and cull
-        float opacity = opacities[primitive_idx];
         const float3 position_world = positions[primitive_idx];
-        const float4 M3 = c_M3;
+        float opacity = opacities[primitive_idx];
         uint n_touched_tiles;
         uint4 screen_bounds;
         float3 u, v, w;
-        float4 VPMT1, VPMT2, VPMT4;
-        float z;
-        if (transform_and_cull<anti_aliasing>(
-            scales, rotations,
-            position_world, M3,
-            n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
-            render_mask_area_table, fovea_mask_area_table,
-            primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
-            config::foveation_radius_tiles, gaze_position, focal_x, focal_y,
-            near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier, config::aa_kernel_size
-        )) return;
+        float4 VPMT1, VPMT2, VPMT4, MT3;
+
+        // transform and cull
+        if constexpr (aaa_mode) {
+            // improved transform and cull
+            const bool culled = transform_and_cull_aaa(
+                scales, rotations,
+                position_world,
+                n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, MT3, opacity,
+                render_mask_area_table, fovea_mask_area_table,
+                primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
+                config::foveation_radius_tiles, gaze_position,
+                width, height, focal_x, focal_y, center_x, center_y,
+                config::min_alpha_threshold, config::min_alpha_threshold_rcp, scale_modifier
+            );
+            __syncwarp();
+            if (culled) return;
+        }
+        else {
+            const float4 M3 = c_M[2];
+            float z;
+            if (transform_and_cull(
+                scales, rotations,
+                position_world, M3,
+                n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
+                render_mask_area_table, fovea_mask_area_table,
+                primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
+                config::foveation_radius_tiles, gaze_position,
+                near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
+            )) return;
+            MT3 = make_float4(dot(make_float3(M3), u), dot(make_float3(M3), v), dot(make_float3(M3), w), z);
+        }
 
         // write intermediate results
         primitive_n_touched_tiles[primitive_idx] = n_touched_tiles;
@@ -67,7 +91,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         primitive_VPMT1[primitive_idx] = VPMT1;
         primitive_VPMT2[primitive_idx] = VPMT2;
         primitive_VPMT4[primitive_idx] = VPMT4;
-        primitive_MT3[primitive_idx] = make_float4(dot(make_float3(M3), u), dot(make_float3(M3), v), dot(make_float3(M3), w), z);
+        primitive_MT3[primitive_idx] = MT3;
 
         // compute view-dependent color
         const float3 rgb = convert_sh_to_rgb<false>(

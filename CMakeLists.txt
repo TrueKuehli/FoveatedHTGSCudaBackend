@@ -12,6 +12,7 @@ file(GLOB SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/hybrid_blend/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/hybrid_blend/kernels/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernel_utils.cuh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernel_utils_aaa.cuh"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/rasterization_utils.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/shared_kernels.cuh"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/hybrid_blend/*.cu"

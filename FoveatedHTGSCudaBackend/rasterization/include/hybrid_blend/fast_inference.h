@@ -38,6 +38,8 @@ namespace htgs_foveated::rasterization::hybrid_blend {
         const int height,
         const float focal_x,
         const float focal_y,
+        const float center_x,
+        const float center_y,
         const float near_plane,
         const float far_plane,
         const float scale_modifier,

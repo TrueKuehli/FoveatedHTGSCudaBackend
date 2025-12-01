@@ -15,7 +15,7 @@
 #define __UINT32_MAX__ UINT32_MAX
 #endif
 
-__device__ __constant__ float4 c_M3;
+__device__ __constant__ float4 c_M[3];
 __device__ __constant__ float4 c_VPM[4];
 __device__ __constant__ float4 c_VPR_inv[4];
 __device__ __constant__ float3 c_cam_position;
@@ -72,7 +72,7 @@ __forceinline__ __device__ bool is_in_fovea(
 }
 
 
-__forceinline__ __device__ Mat3x3 convert_quaterion_to_rotation_matrix(
+__forceinline__ __device__ Mat3x3 convert_quaternion_to_rotation_matrix(
     const float4& quaternion)
 {
     auto [r, x, y, z] = quaternion;
@@ -87,7 +87,6 @@ __forceinline__ __device__ Mat3x3 convert_quaterion_to_rotation_matrix(
 }
 
 
-template<bool anti_aliasing>
 __forceinline__ __device__ bool transform_and_cull(
     const float3* scales,
     const float4* rotations,
@@ -112,13 +111,10 @@ __forceinline__ __device__ bool transform_and_cull(
     const uint tile_height,
     const uint foveation_radius_tiles,
     const uint2 gaze_position,
-    const float focal_x,
-    const float focal_y,
     const float near_plane,
     const float far_plane,
     const float min_alpha_threshold_rcp,
-    const float scale_modifier,
-    const float aa_kernel_size)
+    const float scale_modifier)
 {
     // early near_plane/far_plane plane culling
     z = dot(make_float3(M3), position_world) + M3.w;
@@ -127,44 +123,12 @@ __forceinline__ __device__ bool transform_and_cull(
     // load scale, rotation, and opacity
     const float3 scale = scales[primitive_idx];
     const float4 quaternion = rotations[primitive_idx];
-    const Mat3x3 R = convert_quaterion_to_rotation_matrix(quaternion);
-
-    // Calculate dilated scale for anti-aliasing (if enabled)
-    float3 scale_dilated;
-    if constexpr (anti_aliasing) {
-        const float focal = 0.5f * (focal_x + focal_y);
-        const float mip_filter_scale = fmaxf(
-            (z / focal) * (z / focal) * aa_kernel_size,
-            0  // filter_3d * filter_3d  // TODO: ???
-        );
-        scale_dilated = make_float3(
-            sqrtf(scale.x * scale.x + mip_filter_scale),
-            sqrtf(scale.y * scale.y + mip_filter_scale),
-            sqrtf(scale.z * scale.z + mip_filter_scale)
-        );
-
-        const float3 view_dir_world = normalize(position_world - c_cam_position);
-        const float3 view_dir = make_float3(
-            R.r11 * view_dir_world.x + R.r21 * view_dir_world.y + R.r31 * view_dir_world.z,
-            R.r12 * view_dir_world.x + R.r22 * view_dir_world.y + R.r32 * view_dir_world.z,
-            R.r13 * view_dir_world.x + R.r23 * view_dir_world.y + R.r33 * view_dir_world.z
-        );
-        const float3 r = view_dir * view_dir;
-
-        const float3 s_2 = scale * scale;
-        const float3 s_dil_2 = scale_dilated * scale_dilated;
-        const float det_mul_ray_var = dot(r, make_float3(s_2.y * s_2.z, s_2.z * s_2.x, s_2.x * s_2.y));
-        const float det_mul_ray_var_dil = dot(r, make_float3(s_dil_2.y * s_dil_2.z, s_dil_2.z * s_dil_2.x, s_dil_2.x * s_dil_2.y));
-        const float dilation_factor = sqrtf(det_mul_ray_var / det_mul_ray_var_dil);
-        opacity *= dilation_factor;
-    } else {
-        scale_dilated = scale;
-    }
+    const Mat3x3 R = convert_quaternion_to_rotation_matrix(quaternion);
 
     // compute screen-space bounding box
-    u = make_float3(R.r11 * scale_dilated.x, R.r21 * scale_dilated.x, R.r31 * scale_dilated.x) * scale_modifier;
-    v = make_float3(R.r12 * scale_dilated.y, R.r22 * scale_dilated.y, R.r32 * scale_dilated.y) * scale_modifier;
-    w = make_float3(R.r13 * scale_dilated.z, R.r23 * scale_dilated.z, R.r33 * scale_dilated.z) * scale_modifier;
+    u = make_float3(R.r11 * scale.x, R.r21 * scale.x, R.r31 * scale.x) * scale_modifier;
+    v = make_float3(R.r12 * scale.y, R.r22 * scale.y, R.r32 * scale.y) * scale_modifier;
+    w = make_float3(R.r13 * scale.z, R.r23 * scale.z, R.r33 * scale.z) * scale_modifier;
     const float4 VPM4 = c_VPM[3];
     VPMT4 = make_float4(dot(make_float3(VPM4), u), dot(make_float3(VPM4), v), dot(make_float3(VPM4), w), dot(make_float3(VPM4), position_world) + VPM4.w);
     // tight cutoff for the used opacity threshold

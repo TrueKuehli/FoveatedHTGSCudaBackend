@@ -35,6 +35,8 @@ class RasterizerSettings(NamedTuple):
     height: int
     focal_x: float
     focal_y: float
+    center_x: float
+    center_y: float
     near_plane: float
     far_plane: float
     scale_modifier: float  # scaling factor to be applied to each Gaussian
@@ -58,6 +60,8 @@ class RasterizerSettings(NamedTuple):
             self.height,
             self.focal_x,
             self.focal_y,
+            self.center_x,
+            self.center_y,
             self.near_plane,
             self.far_plane,
             self.scale_modifier,

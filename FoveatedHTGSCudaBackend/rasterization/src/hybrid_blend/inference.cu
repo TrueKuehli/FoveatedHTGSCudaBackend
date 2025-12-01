@@ -105,6 +105,8 @@ void htgs_foveated::rasterization::hybrid_blend::inference(
     const int height,
     const float focal_x,
     const float focal_y,
+    const float center_x,
+    const float center_y,
     const float near_plane,
     const float far_plane,
     const float scale_modifier,
@@ -113,7 +115,7 @@ void htgs_foveated::rasterization::hybrid_blend::inference(
     const bool blur_periphery,
     const bool anti_aliasing)
 {
-    cudaMemcpyToSymbol(c_M3, M + 2, sizeof(float4), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_M, M, 3 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_VPM, VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_VPR_inv, VPR_inv, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
     cudaMemcpyToSymbol(c_cam_position, cam_position, sizeof(float3), 0, cudaMemcpyDeviceToDevice);
@@ -255,8 +257,12 @@ void htgs_foveated::rasterization::hybrid_blend::inference(
         active_sh_bases,
         total_sh_bases,
         gaze_position_tiles,
+        static_cast<float>(width),
+        static_cast<float>(height),
         focal_x,
         focal_y,
+        center_x,
+        center_y,
         near_plane,
         far_plane,
         scale_modifier
