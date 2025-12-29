@@ -43,6 +43,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::config {
     DEF int block_size_get_partition_offsets = 256;
     DEF int block_size_blend = tile_width_small * tile_height_small;
     DEF int block_size_blur = 256;
+    DEF int block_size_blur_blended = 64;
 
     DEF int gaze_visualization_width = 45;
     DEF int gaze_visualization_size = gaze_visualization_width * gaze_visualization_width;

@@ -107,7 +107,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, int K_blended, bool is_lowres_tile, BackgroundModelType background_model, PeripheryInterpolationMode periphery_mode>
+    template <int K, bool is_lowres_tile, BackgroundModelType background_model, PeripheryInterpolationMode periphery_mode>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -126,7 +126,6 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         const uint grid_width,
         const bool output_chw)
     {
-        constexpr bool is_blended_tile = K_blended < K;
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
@@ -152,13 +151,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         __shared__ float collected_opacity[config::block_size_blend];
         // initialize local storage
         float transmittance_tail = 1.0f;
-        float transmittance_tail_blended;
         float4 rgba_premultiplied_tail = make_float4(0.0f);
-        float4 rgba_premultiplied_tail_blended;
-        if constexpr (is_blended_tile) {
-            transmittance_tail_blended = 1.0f;
-            rgba_premultiplied_tail_blended = make_float4(0.0f);
-        }
         __half2 rgbas_premultiplied_core_rg[K];
         __half2 rgbas_premultiplied_core_ba[K];
         float depths_core[K];
@@ -209,23 +202,6 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
                     const float3 rgb = collected_rgb[j];
                     __half2 rgba_premultiplied_rg = __float22half2_rn(make_float2(rgb.x * alpha, rgb.y * alpha));
                     __half2 rgba_premultiplied_ba = __float22half2_rn(make_float2(rgb.z * alpha, alpha));
-                    // Collect tail early for blended tiles
-                    if constexpr (is_blended_tile) {
-                        if (depth < depths_core[K_blended - 1] && alpha >= config::min_alpha_threshold_core) {
-                            rgba_premultiplied_tail_blended += make_float4(
-                                __half2float(rgbas_premultiplied_core_rg[K_blended - 1].x),
-                                __half2float(rgbas_premultiplied_core_rg[K_blended - 1].y),
-                                __half2float(rgbas_premultiplied_core_ba[K_blended - 1].x),
-                                __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y)
-                            );
-                            transmittance_tail_blended *= 1.0f - __half2float(rgbas_premultiplied_core_ba[K_blended - 1].y);
-                        } else {
-                            const float4 primitive_rgba_premultiplied_core = make_float4(__half2float(rgba_premultiplied_rg.x), __half2float(rgba_premultiplied_rg.y), __half2float(rgba_premultiplied_ba.x), __half2float(rgba_premultiplied_ba.y));
-                            const float primitive_transmittance_core = 1.0f - __half2float(rgba_premultiplied_ba.y);
-                            rgba_premultiplied_tail_blended += primitive_rgba_premultiplied_core;
-                            transmittance_tail_blended *= primitive_transmittance_core;
-                        }
-                    }
 
                     if (depth < depths_core[K - 1] && alpha >= config::min_alpha_threshold_core) {
                         #pragma unroll
@@ -247,10 +223,6 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         if (inside) {
             // blend core
             float3 rgb_pixel = make_float3(0.0f);
-            float3 rgb_pixel_blended;
-            if constexpr (is_blended_tile) {
-                rgb_pixel_blended = make_float3(0.0f);
-            }
             float transmittance_core = 1.0f;
             float transmittance_core_blended = 1.0f;
             bool done = false;
@@ -263,178 +235,24 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
                 rgb_pixel += transmittance_core * rgb_premultiplied;
                 transmittance_core *= 1.0f - rgba_premultiplied_ba.y;
                 if (transmittance_core < config::transmittance_threshold) done = true;
-                if constexpr (is_blended_tile) {
-                    if (core_idx < K_blended) {
-                        rgb_pixel_blended += transmittance_core_blended * rgb_premultiplied;
-                        transmittance_core_blended *= 1.0f - rgba_premultiplied_ba.y;
-                        if (transmittance_core_blended < config::transmittance_threshold) done_blended = true;
-                    }
-                }
             }
             // blend tail
             if (!done && rgba_premultiplied_tail.w >= config::min_alpha_threshold) {
                 const float weight_tail = transmittance_core * (1.0f - transmittance_tail);
                 rgb_pixel += weight_tail * (1.0f / rgba_premultiplied_tail.w) * make_float3(rgba_premultiplied_tail);
             }
-            if constexpr (is_blended_tile) {
-                if (!done_blended && rgba_premultiplied_tail_blended.w >= config::min_alpha_threshold) {
-                    const float weight_tail_blended = transmittance_core_blended * (1.0f - transmittance_tail_blended);
-                    rgb_pixel_blended += weight_tail_blended * (1.0f / rgba_premultiplied_tail_blended.w) * make_float3(rgba_premultiplied_tail_blended);
-                }
-            }
             // blend background model
             if constexpr (background_model == BackgroundModelType::SH) {
                 const float weight_background = transmittance_core * transmittance_tail;
-                float3 bg_eval;
-
-                if constexpr (is_blended_tile) {
-                    const float weight_background_blended = transmittance_core_blended * transmittance_tail_blended;
-                    // TODO: Does a larger threshold in the periphery work to improve performance?
-                    if (weight_background_blended >= config::transmittance_threshold) {
-                        bg_eval = eval_sh_background_model(pixel_x, pixel_y);
-                        rgb_pixel_blended += weight_background_blended * bg_eval;
-                    }
-                } else {
-                    bg_eval = eval_sh_background_model(pixel_x, pixel_y);
-                }
-
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * bg_eval;
+                    rgb_pixel += weight_background * eval_sh_background_model(pixel_x, pixel_y);
                 }
             } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
                 const float weight_background = transmittance_core * transmittance_tail;
-                float3 bg_eval;
-
-                if constexpr (is_blended_tile) {
-                    const float weight_background_blended = transmittance_core_blended * transmittance_tail_blended;
-                    if (weight_background_blended >= config::transmittance_threshold) {
-                        bg_eval = eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
-                            pixel_x, pixel_y, background_model_data
-                        );
-                        rgb_pixel_blended += weight_background_blended * bg_eval;
-                    }
-                } else {
-                    bg_eval = eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
+                if (weight_background >= config::transmittance_threshold) {
+                    rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
                         pixel_x, pixel_y, background_model_data
                     );
-                }
-
-                if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * bg_eval;
-                }
-            }
-            if constexpr (is_blended_tile) {
-                // store intermediate results
-                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-                    if (output_chw) {
-                        const int n_pixels = width * height;
-                        image[pixel_idx] = __saturatef(rgb_pixel_blended.x);
-                        image[n_pixels + pixel_idx] = __saturatef(rgb_pixel_blended.y);
-                        image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel_blended.z);
-                    } else {
-                        const int base_idx = 3 * pixel_idx;
-                        image[base_idx] = __saturatef(rgb_pixel_blended.x);
-                        image[base_idx + 1] = __saturatef(rgb_pixel_blended.y);
-                        image[base_idx + 2] = __saturatef(rgb_pixel_blended.z);
-                }
-            } else {
-                // store results
-                if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
-                    if constexpr (is_lowres_tile) {
-                        for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
-                            for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
-                                const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
-                                if (output_chw) {
-                                    const int n_pixels = width * height;
-                                    image[pixel_idx] = __saturatef(rgb_pixel.x);
-                                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
-                                } else {
-                                    const int base_idx = 3 * pixel_idx;
-                                    image[base_idx] = __saturatef(rgb_pixel.x);
-                                    image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                                    image[base_idx + 2] = __saturatef(rgb_pixel.z);
-                                }
-                            }
-                        }
-                    } else {
-                        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-                        if (output_chw) {
-                            const int n_pixels = width * height;
-                            image[pixel_idx] = __saturatef(rgb_pixel.x);
-                            image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                            image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
-                        } else {
-                            const int base_idx = 3 * pixel_idx;
-                            image[base_idx] = __saturatef(rgb_pixel.x);
-                            image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                            image[base_idx + 2] = __saturatef(rgb_pixel.z);
-                        }
-                    }
-                } else {
-                    const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-                    if (output_chw) {
-                        const int n_pixels = width * height;
-                        image[pixel_idx] = __saturatef(rgb_pixel.x);
-                        image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
-                        image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
-                    } else {
-                        const int base_idx = 3 * pixel_idx;
-                        image[base_idx] = __saturatef(rgb_pixel.x);
-                        image[base_idx + 1] = __saturatef(rgb_pixel.y);
-                        image[base_idx + 2] = __saturatef(rgb_pixel.z);
-                    }
-                }
-            }
-
-            if constexpr (is_blended_tile) {
-                // Get the pixel coordinates of the top left pixel of each blending group
-                const uint2 top_left_pixel_coords = make_uint2(
-                    large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x / config::tile_stride_x * config::tile_stride_x,
-                    large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y / config::tile_stride_y * config::tile_stride_y
-                );
-
-                cooperative_groups::coalesced_group coalesced = cooperative_groups::coalesced_threads();
-                coalesced.sync();  // Ensure all threads have written their pixel value
-
-                // Calculate average pixel color for blending
-                float3 average_rgb_pixel = make_float3(0.0f);
-                // TODO: Test pragma unroll (still requires if though to skip out-of-bounds pixels)
-                for (uint x = 0; x < min(config::tile_stride_x, width - top_left_pixel_coords.x); x++) {
-                    for (uint y = 0; y < min(config::tile_stride_y, height - top_left_pixel_coords.y); y++) {
-                        const int pixel_idx = width * (top_left_pixel_coords.y + y) + (top_left_pixel_coords.x + x);
-                        if (output_chw) {
-                            const int n_pixels = width * height;
-                            average_rgb_pixel.x += image[pixel_idx] / config::num_small_tiles_per_large_tile;
-                            average_rgb_pixel.y += image[n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
-                            average_rgb_pixel.z += image[2 * n_pixels + pixel_idx] / config::num_small_tiles_per_large_tile;
-                        } else {
-                            const int base_idx = 3 * pixel_idx;
-                            average_rgb_pixel.x += image[base_idx] / config::num_small_tiles_per_large_tile;
-                            average_rgb_pixel.y += image[base_idx + 1] / config::num_small_tiles_per_large_tile;
-                            average_rgb_pixel.z += image[base_idx + 2] / config::num_small_tiles_per_large_tile;
-                        }
-                    }
-                }
-
-                coalesced.sync();  // Ensure all threads have computed the average
-                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-
-                // Determine blending factor
-                const float2 dist_from_gaze = c_gaze_position_cuda - make_float2(pixel_coords.x, pixel_coords.y);
-                const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
-
-                // Write the average color back to the pixels in the tile
-                if (output_chw) {
-                    const int n_pixels = width * height;
-                    image[pixel_idx] = __saturatef(rgb_pixel.x * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
-                } else {
-                    const int base_idx = 3 * pixel_idx;
-                    image[base_idx] = __saturatef(rgb_pixel.x * (1.0f - blend_factor) + average_rgb_pixel.x * blend_factor);
-                    image[base_idx + 1] = __saturatef(rgb_pixel.y * (1.0f - blend_factor) + average_rgb_pixel.y * blend_factor);
-                    image[base_idx + 2] = __saturatef(rgb_pixel.z * (1.0f - blend_factor) + average_rgb_pixel.z * blend_factor);
                 }
             }
         }
@@ -602,6 +420,246 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             image_blurred[base_idx] = __saturatef(average_rgb_pixel.x * gaussian_factor);
             image_blurred[base_idx + 1] = __saturatef(average_rgb_pixel.y * gaussian_factor);
             image_blurred[base_idx + 2] = __saturatef(average_rgb_pixel.z * gaussian_factor);
+        }
+    }
+
+    __forceinline__ __device__ float3 sample_rgb(
+        const float* image,
+        const int x,
+        const int y,
+        const int width,
+        const int height,
+        const bool output_chw
+    ) {
+        const int sample_x = clamp(x, 0, width - 1);
+        const int sample_y = clamp(y, 0, height - 1);
+        const uint sample_idx = width * sample_y + sample_x;
+
+        if (output_chw) {
+            const uint n_pixels = width * height;
+            return make_float3(
+                image[sample_idx],
+                image[n_pixels + sample_idx],
+                image[2 * n_pixels + sample_idx]
+            );
+        } else {
+            const uint base_idx = 3 * sample_idx;
+            return make_float3(
+                image[base_idx],
+                image[base_idx + 1],
+                image[base_idx + 2]
+            );
+        }
+    }
+
+    __global__ void __launch_bounds__(config::block_size_blur) interpolate_and_blur(
+        float* image_blurred,
+        const float* image,
+        const uint* tile_index_map,
+        const uint tile_offset,
+        const uint width,
+        const uint height,
+        const uint grid_width,
+        const bool output_chw
+    ) {
+        // Fused bilinear interpolation + gaussian blur kernel
+        // Because the workload differs based on the subpixel (in each 2x2 group of pixels) differs,
+        //   we launch four blocks (differentiated by y/z block index) per tile, each responsible
+        //   for one of the subpixels
+        // TODO: Compare the performance with 4 (templated) separate kernels
+        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+        const uint group_index = block.group_index().x + tile_offset;
+        const uint true_group_index = tile_index_map[group_index];
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+
+        const dim3 thread_index = block.thread_index();
+        const uint thread_rank = block.thread_rank();
+        int pixel_x = large_tile_index_2d.x * config::tile_width_large + thread_index.x * config::tile_stride_x + block.group_index().y;
+        int pixel_y = large_tile_index_2d.y * config::tile_height_large + thread_index.y * config::tile_stride_y + block.group_index().z;
+        const bool inside = pixel_x < width && pixel_y < height;
+        if (!inside) return;
+        const int pixel_idx = width * pixel_y + pixel_x;
+
+        // TODO: The following assumes pixel stride of 2, remove unnecessary generalizations in the code before code release
+        // The method here would work just the same with higher strides, but would require different factors
+        float3 blurred_rgb = make_float3(0.0f);
+        float blur_factor;
+        if (block.group_index().y == 0 && block.group_index().z == 0) {
+            // Top left pixel, factors:
+            //   [1.0   0.0   6.0  0.0  1.0]
+            //   [0.0   0.0   0.0  0.0  0.0]
+            //   [6.0   0.0  36.0  0.0  6.0]
+            //   [0.0   0.0   0.0  0.0  0.0]
+            //   [1.0   0.0   6.0  0.0  1.0]
+            blur_factor = 1.0f / 64.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y - 2, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y,     width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y,     width, height, output_chw) * 36.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y,     width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 2, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 2, width, height, output_chw);
+        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
+            // Top right pixel, factors:
+            //   [1.0  0.0  6.0  0.0  1.0]
+            //   [0.0  0.0  0.0  0.0  0.0]
+            //   [1.0  0.0  6.0  0.0  1.0]
+            blur_factor = 1.0f / 16.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y - 1, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 1, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 1, width, height, output_chw);
+        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
+            // Bottom left pixel, factors:
+            //   [1.0  0.0  1.0]
+            //   [0.0  0.0  0.0]
+            //   [6.0  0.0  6.0]
+            //   [0.0  0.0  0.0]
+            //   [1.0  0.0  1.0]
+            blur_factor = 1.0f / 16.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y,     width, height, output_chw) * 6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y,     width, height, output_chw) * 6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y + 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y + 2, width, height, output_chw);
+        } else if (block.group_index().y == 1 && block.group_index().z == 1) {
+            // Bottom right pixel, factors:
+            //   [1.0  0.0  1.0]
+            //   [0.0  0.0  0.0]
+            //   [1.0  0.0  1.0]
+            blur_factor = 1.0f / 4.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y + 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y + 1, width, height, output_chw);
+        }
+
+        if (output_chw) {
+            const int n_pixels = width * height;
+            image_blurred[pixel_idx] = __saturatef(blurred_rgb.x * blur_factor);
+            image_blurred[n_pixels + pixel_idx] = __saturatef(blurred_rgb.y * blur_factor);
+            image_blurred[2 * n_pixels + pixel_idx] = __saturatef(blurred_rgb.z * blur_factor);
+        } else {
+            const int base_idx = 3 * pixel_idx;
+            image_blurred[base_idx] = __saturatef(blurred_rgb.x * blur_factor);
+            image_blurred[base_idx + 1] = __saturatef(blurred_rgb.y * blur_factor);
+            image_blurred[base_idx + 2] = __saturatef(blurred_rgb.z * blur_factor);
+        }
+    }
+
+
+    __global__ void __launch_bounds__(config::block_size_blur_blended) interpolate_and_blur_blended(
+        float* image_blurred,
+        const float* image,
+        const uint* tile_index_map,
+        const uint tile_offset,
+        const uint width,
+        const uint height,
+        const uint grid_width,
+        const uint2 gaze_position_tiles,
+        const bool output_chw
+    ) {
+        // Fused bilinear interpolation + gaussian blur kernel; with output blended with existing pixels (for blended tiles)
+        // Because the workload differs based on the subpixel (in each 2x2 group of pixels) differs,
+        //   we launch four blocks (differentiated by y/z block index) per tile, each responsible
+        //   for one of the subpixels
+        // TODO: Compare the performance with 4 (templated) separate kernels
+        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+        const uint group_index = block.group_index().x + tile_offset;
+        const uint true_group_index = tile_index_map[group_index];
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
+
+        const dim3 thread_index = block.thread_index();
+        const uint thread_rank = block.thread_rank();
+        int pixel_x = large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x * config::tile_stride_x + block.group_index().y;
+        int pixel_y = large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y * config::tile_stride_y + block.group_index().z;
+        const bool inside = pixel_x < width && pixel_y < height;
+        if (!inside) return;
+        const int pixel_idx = width * pixel_y + pixel_x;
+
+        // Determine blending factor
+        const float2 dist_from_gaze = c_gaze_position_cuda - make_float2(pixel_x, pixel_y);
+        const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
+
+        // TODO: The following assumes pixel stride of 2, remove unnecessary generalizations in the code before code release
+        // The method here would work just the same with higher strides, but would require different factors
+        float3 blurred_rgb = make_float3(0.0f);
+        float3 center_rgb = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+        float blur_factor;
+        if (block.group_index().y == 0 && block.group_index().z == 0) {
+            // Top left pixel, factors:
+            //   [1.0   0.0   6.0  0.0  1.0]
+            //   [0.0   0.0   0.0  0.0  0.0]
+            //   [6.0   0.0  36.0  0.0  6.0]
+            //   [0.0   0.0   0.0  0.0  0.0]
+            //   [1.0   0.0   6.0  0.0  1.0]
+            blur_factor = 1.0f / 64.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y - 2, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y,     width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y,     width, height, output_chw) * 36.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y,     width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 2, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 2, width, height, output_chw);
+        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
+            // Top right pixel, factors:
+            //   [1.0  0.0  6.0  0.0  1.0]
+            //   [0.0  0.0  0.0  0.0  0.0]
+            //   [1.0  0.0  6.0  0.0  1.0]
+            blur_factor = 1.0f / 16.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y - 1, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 1, width, height, output_chw) *  6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 1, width, height, output_chw);
+        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
+            // Bottom left pixel, factors:
+            //   [1.0  0.0  1.0]
+            //   [0.0  0.0  0.0]
+            //   [6.0  0.0  6.0]
+            //   [0.0  0.0  0.0]
+            //   [1.0  0.0  1.0]
+            blur_factor = 1.0f / 16.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y - 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y,     width, height, output_chw) * 6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y,     width, height, output_chw) * 6.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y + 2, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y + 2, width, height, output_chw);
+        } else if (block.group_index().y == 1 && block.group_index().z == 1) {
+            // Bottom right pixel, factors:
+            //   [1.0  0.0  1.0]
+            //   [0.0  0.0  0.0]
+            //   [1.0  0.0  1.0]
+            blur_factor = 1.0f / 4.0f;
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y - 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x - 1, pixel_y + 1, width, height, output_chw);
+            blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y + 1, width, height, output_chw);
+        }
+
+        if (output_chw) {
+            const int n_pixels = width * height;
+            image_blurred[pixel_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
+            image_blurred[n_pixels + pixel_idx] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
+            image_blurred[2 * n_pixels + pixel_idx] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
+        } else {
+            const int base_idx = 3 * pixel_idx;
+            image_blurred[base_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
+            image_blurred[base_idx + 1] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
+            image_blurred[base_idx + 2] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
         }
     }
 

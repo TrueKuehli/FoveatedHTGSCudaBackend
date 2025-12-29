@@ -190,8 +190,6 @@ __forceinline__ __device__ bool transform_and_cull(
     // n_tiles = area(D) + area(A) - area(B) - area(C)
     // This may overestimate the actual amount (as tiles masked by the render mask are not excluded from the fovea mask)
     //   but this is acceptable as it only leads to some redundant work
-    // TODO: We could compare performance with re-calculating the summed area tables each frame
-    // TODO: On modern GPUs, atomic adds are apparently very performant, so we could try instance creation that way, and compare performance
     n_touched_tiles = render_mask_area_table[area_table_indices.w]
                     + render_mask_area_table[area_table_indices.x]
                     - render_mask_area_table[area_table_indices.y]
