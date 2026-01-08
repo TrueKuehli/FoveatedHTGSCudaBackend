@@ -502,8 +502,8 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 2, width, height, output_chw);
             blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 2, width, height, output_chw) *  6.0f;
             blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 2, width, height, output_chw);
-        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
-            // Top right pixel, factors:
+        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
+            // Bottom left pixel, factors:
             //   [1.0  0.0  6.0  0.0  1.0]
             //   [0.0  0.0  0.0  0.0  0.0]
             //   [1.0  0.0  6.0  0.0  1.0]
@@ -514,8 +514,8 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 1, width, height, output_chw);
             blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 1, width, height, output_chw) *  6.0f;
             blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 1, width, height, output_chw);
-        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
-            // Bottom left pixel, factors:
+        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
+            // Top right pixel, factors:
             //   [1.0  0.0  1.0]
             //   [0.0  0.0  0.0]
             //   [6.0  0.0  6.0]
