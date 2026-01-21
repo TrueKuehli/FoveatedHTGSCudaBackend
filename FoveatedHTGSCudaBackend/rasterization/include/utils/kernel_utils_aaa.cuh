@@ -1,8 +1,8 @@
 #pragma once
 
-#include "kernel_utils.cuh"
-// #include <cooperative_groups.h>
+#include "utils/kernel_utils.cuh"
 #define __FLT_MAX__ 3.402823466e+38f
+
 
 __device__ inline float max_contrib_plane(
     const float4 plane,

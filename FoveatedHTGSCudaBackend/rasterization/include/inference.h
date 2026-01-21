@@ -1,12 +1,12 @@
 #pragma once
 
 #include "helper_math.h"
-#include "rasterization_utils.h"
+#include "utils/rasterization_utils.h"
 #include <functional>
 
-namespace htgs_foveated::rasterization::hybrid_blend {
+namespace htgs_foveated::rasterization {
 
-    void fast_inference(
+    void inference(
         std::function<char* (size_t)> per_primitive_buffers_func,
         std::function<char* (size_t)> per_tile_buffers_func,
         std::function<char* (size_t)> per_subtile_buffers_func,
@@ -29,7 +29,6 @@ namespace htgs_foveated::rasterization::hybrid_blend {
         const uint* fovea_mask_area_table,
         const float* background_model_data,
         const BackgroundModelType background_model_type,
-        const PeripheryInterpolationMode periphery_mode,
         const int K,
         const int n_primitives,
         const int active_sh_bases,

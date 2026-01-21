@@ -2,6 +2,7 @@
 
 #include <torch/extension.h>
 
+
 namespace htgs_foveated::rasterization {
 
     torch::Tensor fast_inference_wrapper(
@@ -21,7 +22,6 @@ namespace htgs_foveated::rasterization {
         const torch::Tensor& fovea_mask_area_table,
         const torch::Tensor& background_model_data,
         const int background_model_type,
-        const int periphery_interpolation_mode,
         const int K,
         const int active_sh_bases,
         const int width,

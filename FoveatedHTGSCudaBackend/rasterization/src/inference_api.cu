@@ -1,16 +1,16 @@
-#include "rasterization_api.h"
-#include "hybrid_blend/inference.h"
+#include "inference_api.h"
+#include "inference.h"
 
-#include "torch_utils.h"
 #include "helper_math.h"
-#include "rasterization_utils.h"
+#include "utils/rasterization_utils.h"
+#include "utils/torch_utils.h"
 #include <torch/extension.h>
 #include <stdexcept>
 #include <functional>
 #include <tuple>
 
 
-std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference_wrapper(
+torch::Tensor htgs_foveated::rasterization::inference_wrapper(
     const torch::Tensor& positions,
     const torch::Tensor& scales,
     const torch::Tensor& rotations,
@@ -27,7 +27,6 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
     const torch::Tensor& fovea_mask_area_table,
     const torch::Tensor& background_model_data,
     const int background_model_type,
-    const int periphery_interpolation_mode,
     const int K,
     const int active_sh_bases,
     const int width,
@@ -40,11 +39,9 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
     const float far_plane,
     const float scale_modifier,
     const bool to_chw,
-    const bool use_median_depth,
     const bool blur_periphery,
     const bool anti_aliasing
 ) {
-    const PeripheryInterpolationMode periphery_mode = static_cast<PeripheryInterpolationMode>(periphery_interpolation_mode);
     const BackgroundModelType background_model = static_cast<BackgroundModelType>(background_model_type);
     const int n_primitives = positions.size(0);
     const int total_sh_bases = sh_rest.size(1);
@@ -62,11 +59,11 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
     const std::function<char*(size_t)> per_instance_buffers_func = resize_function_wrapper(per_instance_buffers);
 
     // When blurring the periphery, we need an extra image buffer
-    torch::Tensor image_final = blur_periphery ?
+    torch::Tensor image_temp = blur_periphery ?
             (to_chw ? torch::zeros({3, height, width}, float_options) : torch::zeros({height, width, 3}, float_options))
             : torch::empty({0}, float_options);
 
-    hybrid_blend::inference(
+    inference(
         per_primitive_buffers_func,
         per_tile_buffers_func,
         per_subtile_buffers_func,
@@ -82,15 +79,13 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         reinterpret_cast<const float4*>(VPR_inv.contiguous().data_ptr<float>()),
         reinterpret_cast<const float3*>(cam_position.contiguous().data_ptr<float>()),
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
+        blur_periphery ? image_temp.data_ptr<float>() : image.data_ptr<float>(),
         image.data_ptr<float>(),
-        blur_periphery ? image_final.data_ptr<float>() : image.data_ptr<float>(),
-        depth.data_ptr<float>(),
         render_mask.data_ptr<uint>(),
         render_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>(),
         background_model_data.data_ptr<float>(),
         background_model,
-        periphery_mode,
         K,
         n_primitives,
         active_sh_bases,
@@ -105,11 +100,9 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         far_plane,
         scale_modifier,
         to_chw,
-        use_median_depth,
         blur_periphery,
         anti_aliasing
     );
 
-    if (blur_periphery) return {image_final, depth};
-    return {image, depth};
+    return image;
 }

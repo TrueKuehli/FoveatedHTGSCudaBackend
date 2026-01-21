@@ -1,10 +1,5 @@
 #pragma once
 
-enum class PeripheryInterpolationMode {
-    NEAREST = 0,
-    LINEAR = 1,
-};
-
 
 enum class BackgroundModelType {
     NONE = 0,

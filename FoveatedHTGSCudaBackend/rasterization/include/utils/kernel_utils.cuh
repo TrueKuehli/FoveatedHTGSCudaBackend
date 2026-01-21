@@ -15,6 +15,7 @@
 #define __UINT32_MAX__ UINT32_MAX
 #endif
 
+
 __device__ __constant__ float4 c_M[3];
 __device__ __constant__ float4 c_VPM[4];
 __device__ __constant__ float4 c_VPR_inv[4];
@@ -37,6 +38,36 @@ __device__ void swap(
     T temp = a;
     a = b;
     b = temp;
+}
+
+
+__forceinline__ __device__ float3 sample_rgb(
+    const float* image,
+    const int x,
+    const int y,
+    const int width,
+    const int height,
+    const bool output_chw
+) {
+    const int sample_x = clamp(x, 0, width - 1);
+    const int sample_y = clamp(y, 0, height - 1);
+    const int sample_idx = width * sample_y + sample_x;
+
+    if (output_chw) {
+        const int n_pixels = width * height;
+        return make_float3(
+            image[sample_idx],
+            image[n_pixels + sample_idx],
+            image[2 * n_pixels + sample_idx]
+        );
+    } else {
+        const int base_idx = 3 * sample_idx;
+        return make_float3(
+            image[base_idx],
+            image[base_idx + 1],
+            image[base_idx + 2]
+        );
+    }
 }
 
 

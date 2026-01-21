@@ -1,10 +1,11 @@
 #pragma once
 
-#include "enums.h"
 #include "helper_math.h"
+#include "utils/enums.h"
 #include <cub/cub.cuh>
 
-namespace htgs_foveated::rasterization::hybrid_blend {
+
+namespace htgs_foveated::rasterization {
 
     template <typename T>
     static void obtain(char*& blob, T*& ptr, std::size_t count, std::size_t alignment) {

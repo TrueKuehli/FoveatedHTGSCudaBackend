@@ -1,7 +1,8 @@
-#include "shared_kernels.cuh"
-#include "kernel_utils.cuh"
 #include "helper_math.h"
+#include "shared_kernels.cuh"
+#include "utils/kernel_utils.cuh"
 #include <cstdint>
+
 
 namespace htgs_foveated::rasterization::shared_kernels {
     template <typename KeyT>

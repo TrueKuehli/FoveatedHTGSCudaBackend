@@ -1,9 +1,10 @@
 #pragma once
 
-#include "enums.h"
 #include "helper_math.h"
-#include "kernel_utils.cuh"
+#include "utils/enums.h"
+#include "utils/kernel_utils.cuh"
 #include <cstdint>
+
 
 namespace htgs_foveated::rasterization::shared_kernels {
 

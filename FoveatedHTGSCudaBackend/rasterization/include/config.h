@@ -4,10 +4,11 @@
 
 #define DEF inline constexpr
 
-namespace htgs_foveated::rasterization::hybrid_blend::config {
+
+namespace htgs_foveated::rasterization::config {
     // debugging constants
     DEF bool debug_inference = false;
-    DEF bool debug_fast_inference = false;
+    
     // rendering constants
     DEF float transmittance_threshold = 1e-4f;
     DEF float max_fragment_alpha = 1.0f; // 3dgs uses 0.99f
@@ -50,6 +51,6 @@ namespace htgs_foveated::rasterization::hybrid_blend::config {
     DEF bool gaze_visualization_circular = true;
 }
 
-namespace config = htgs_foveated::rasterization::hybrid_blend::config;
+namespace config = htgs_foveated::rasterization::config;
 
 #undef DEF

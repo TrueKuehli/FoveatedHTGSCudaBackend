@@ -21,16 +21,10 @@ for module in cuda_modules:
     all_sources += glob(str(extension_root / module / 'src' / '**' / '*.cu'), recursive=True)
 
 base_sources = [str(extension_root / 'torch_bindings' / 'bindings.cpp')]
-fast_inference_sources = [
-    str(extension_root / 'torch_bindings' / 'bindings_benchmarking.cpp'),
-    str(extension_root / 'rasterization' / 'src' / 'torch_utils.cpp'),
-    str(extension_root / 'rasterization' / 'src' / 'shared_kernels.cu')
-]
+fast_inference_sources = [str(extension_root / 'torch_bindings' / 'bindings_benchmarking.cpp')]
 for src in all_sources:
-    if 'fast' in Path(src).name:
-        fast_inference_sources.append(src)
-    else:
-        base_sources.append(src)
+    fast_inference_sources.append(src)
+    base_sources.append(src)
 
 include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:

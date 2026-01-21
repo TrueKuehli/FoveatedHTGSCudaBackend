@@ -6,11 +6,6 @@ import torch
 from FoveatedHTGSCudaBackend import _C, _C_benchmarking
 
 
-class PeripheryInterpolationMode(Enum):
-    NEAREST = 0
-    LINEAR = 1
-
-
 class BackgroundModel(Enum):
     NONE = 0
     SH = 1
@@ -28,7 +23,6 @@ class RasterizerSettings(NamedTuple):
     fovea_mask_area_table: torch.Tensor  # precomputed table for the shape of the sharp foveated area
     background_model_data: torch.Tensor  # background model specific data
     background_model: BackgroundModel
-    periphery_interpolation_mode: PeripheryInterpolationMode
     K: int  # size of the core for hybrid transparency
     active_sh_bases: int  # number of spherical harmonics bases to use for color computation
     width: int
@@ -53,7 +47,6 @@ class RasterizerSettings(NamedTuple):
             self.fovea_mask_area_table,
             self.background_model_data,
             self.background_model.value,
-            self.periphery_interpolation_mode.value,
             self.K,
             self.active_sh_bases,
             self.width,
@@ -83,11 +76,10 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             sh_rest: torch.Tensor,
             settings: RasterizerSettings,
             to_chw: bool,
-            use_median_depth: bool,
             blur_periphery: bool,
             anti_aliasing: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        image, depth = _C.render(
+        image = _C.render(
             positions,
             scales,
             rotations,
@@ -96,12 +88,10 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             sh_rest,
             *settings.as_tuple(),
             to_chw,
-            use_median_depth,
             blur_periphery,
             anti_aliasing,
         )
-        depth = depth.unsqueeze(0) if to_chw else depth.unsqueeze(-1)
-        return image, depth
+        return image
 
     def benchmark(
             self,

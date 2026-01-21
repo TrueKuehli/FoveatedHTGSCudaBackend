@@ -1,11 +1,11 @@
 #pragma once
 
 #include <torch/extension.h>
-#include <tuple>
+
 
 namespace htgs_foveated::rasterization {
-    std::tuple<torch::Tensor, torch::Tensor>
-    inference_wrapper(
+
+    torch::Tensor inference_wrapper(
         const torch::Tensor& positions,
         const torch::Tensor& scales,
         const torch::Tensor& rotations,
@@ -22,7 +22,6 @@ namespace htgs_foveated::rasterization {
         const torch::Tensor& fovea_mask_area_table,
         const torch::Tensor& background_model_data,
         const int background_model_type,
-        const int periphery_interpolation_mode,
         const int K,
         const int active_sh_bases,
         const int width,
@@ -35,7 +34,7 @@ namespace htgs_foveated::rasterization {
         const float far_plane,
         const float scale_modifier,
         const bool to_chw,
-        const bool use_median_depth,
         const bool blur_periphery,
         const bool anti_aliasing);
+
 }

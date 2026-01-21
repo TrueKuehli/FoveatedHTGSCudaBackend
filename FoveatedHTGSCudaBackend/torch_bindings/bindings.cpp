@@ -1,5 +1,5 @@
 #include <torch/extension.h>
-#include "rasterization_api.h"
+#include "inference_api.h"
 
 namespace rasterization_api = htgs_foveated::rasterization;
 

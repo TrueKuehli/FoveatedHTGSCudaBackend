@@ -9,14 +9,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 set(CMAKE_CUDA_STANDARD 20)
 
 file(GLOB SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/hybrid_blend/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/hybrid_blend/kernels/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernel_utils.cuh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernel_utils_aaa.cuh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/rasterization_utils.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/config.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/inference.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/shared_kernels.cuh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/hybrid_blend/*.cu"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/shared_kernels.cu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/config.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/config.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/*.cuh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/*.cu"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/utils/*.h"
 )
 add_library(FoveatedHTGSRasterizer STATIC ${SOURCES})
