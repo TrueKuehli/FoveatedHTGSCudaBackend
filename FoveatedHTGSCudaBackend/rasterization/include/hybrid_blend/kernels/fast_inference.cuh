@@ -58,8 +58,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
         if constexpr (aaa_mode) {
             // improved transform and cull
             const bool culled = transform_and_cull_aaa(
-                scales, rotations,
-                position_world,
+                scales, rotations, position_world,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, MT3, opacity,
                 render_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
@@ -74,8 +73,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             const float4 M3 = c_M[2];
             float z;
             if (transform_and_cull(
-                scales, rotations,
-                position_world, M3,
+                scales, rotations, position_world, M3,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
                 render_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
@@ -253,6 +251,54 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
                     rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height>(
                         pixel_x, pixel_y, background_model_data
                     );
+                }
+            }
+
+            // store results
+            if constexpr (periphery_mode == PeripheryInterpolationMode::NEAREST) {
+                if constexpr (is_lowres_tile) {
+                    for (uint x = 0; x < min(config::tile_stride_x, width - pixel_coords.x); x++) {
+                        for (uint y = 0; y < min(config::tile_stride_y, height - pixel_coords.y); y++) {
+                            const int pixel_idx = width * (pixel_coords.y + y) + (pixel_coords.x + x);
+                            if (output_chw) {
+                                const int n_pixels = width * height;
+                                image[pixel_idx] = __saturatef(rgb_pixel.x);
+                                image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                                image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                            } else {
+                                const int base_idx = 3 * pixel_idx;
+                                image[base_idx] = __saturatef(rgb_pixel.x);
+                                image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                                image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                            }
+                        }
+                    }
+                } else {
+                    const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+                    if (output_chw) {
+                        const int n_pixels = width * height;
+                        image[pixel_idx] = __saturatef(rgb_pixel.x);
+                        image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                        image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                    } else {
+                        const int base_idx = 3 * pixel_idx;
+                        image[base_idx] = __saturatef(rgb_pixel.x);
+                        image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                        image[base_idx + 2] = __saturatef(rgb_pixel.z);
+                    }
+                }
+            } else {
+                const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+                if (output_chw) {
+                    const int n_pixels = width * height;
+                    image[pixel_idx] = __saturatef(rgb_pixel.x);
+                    image[n_pixels + pixel_idx] = __saturatef(rgb_pixel.y);
+                    image[2 * n_pixels + pixel_idx] = __saturatef(rgb_pixel.z);
+                } else {
+                    const int base_idx = 3 * pixel_idx;
+                    image[base_idx] = __saturatef(rgb_pixel.x);
+                    image[base_idx + 1] = __saturatef(rgb_pixel.y);
+                    image[base_idx + 2] = __saturatef(rgb_pixel.z);
                 }
             }
         }
@@ -612,8 +658,8 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 2, width, height, output_chw);
             blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 2, width, height, output_chw) *  6.0f;
             blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 2, width, height, output_chw);
-        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
-            // Top right pixel, factors:
+        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
+            // Bottom left pixel, factors:
             //   [1.0  0.0  6.0  0.0  1.0]
             //   [0.0  0.0  0.0  0.0  0.0]
             //   [1.0  0.0  6.0  0.0  1.0]
@@ -624,8 +670,8 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference {
             blurred_rgb += sample_rgb(image, pixel_x - 2, pixel_y + 1, width, height, output_chw);
             blurred_rgb += sample_rgb(image, pixel_x,     pixel_y + 1, width, height, output_chw) *  6.0f;
             blurred_rgb += sample_rgb(image, pixel_x + 2, pixel_y + 1, width, height, output_chw);
-        } else if (block.group_index().y == 0 && block.group_index().z == 1) {
-            // Bottom left pixel, factors:
+        } else if (block.group_index().y == 1 && block.group_index().z == 0) {
+            // Top right pixel, factors:
             //   [1.0  0.0  1.0]
             //   [0.0  0.0  0.0]
             //   [6.0  0.0  6.0]

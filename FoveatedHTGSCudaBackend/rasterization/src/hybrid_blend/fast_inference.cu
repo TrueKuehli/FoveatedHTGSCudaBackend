@@ -414,7 +414,8 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
         }
 
         cudaStreamSynchronize(blend_blended_tiles_stream);
-        if (periphery_mode == PeripheryInterpolationMode::LINEAR && blur_periphery) {
+        cudaStreamSynchronize(blend_periphery_stream);
+        if (blur_periphery) {
             dim3 blend_grid_blur = blend_grid_periphery;
             dim3 blend_grid_blur_blended = blend_grid_blended;
             blend_grid_blur.y = config::tile_stride_x;
@@ -452,53 +453,7 @@ void htgs_foveated::rasterization::hybrid_blend::fast_inference(
                 cudaStreamSynchronize(blend_blended_tiles_stream);
             }
         } else {
-            // TODO: Currently broken in regard to blended tiles, fix this code path later
-            if (periphery_mode == PeripheryInterpolationMode::LINEAR) {
-                // TODO: Optimization: only launch for tiles that actually have missing pixels (periphery tiles)
-                htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::interpolate_missing<<<grid, block, 0, blend_periphery_stream>>>(
-                    image,
-                    width,
-                    height,
-                    grid_large.x,
-                    gaze_position_tiles,
-                    to_chw
-                );
-            }
-
-            if (blur_periphery) {
-                dim3 blend_grid_blur = blend_grid_periphery;
-                dim3 blend_grid_copy = blend_grid_blended;
-                blend_grid_blur.y = config::num_small_tiles_per_large_tile;
-                blend_grid_copy.y = config::num_small_tiles_per_large_tile;
-                if (num_tiles_periphery > 0) {
-                    htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::blur_cu<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
-                        image,
-                        image_final,
-                        per_sub_tile_buffers.tile_index_map_partitioned,
-                        offsets_cpu.periphery_tiles_offset,
-                        width,
-                        height,
-                        grid_large.x,
-                        to_chw
-                    );
-                    CHECK_CUDA(config::debug_fast_inference, "blur")
-                }
-
-                if (num_tiles_blended > 0) {
-                    htgs_foveated::rasterization::hybrid_blend::kernels::fast_inference::copy_pixels<<<blend_grid_copy, block, 0, blend_blended_tiles_stream>>>(
-                        image,
-                        image_final,
-                        per_sub_tile_buffers.tile_index_map_partitioned,
-                        offsets_cpu.blended_tiles_offset,
-                        width,
-                        height,
-                        grid_large.x,
-                        to_chw
-                    );
-                    CHECK_CUDA(config::debug_inference, "copy_pixels")
-                    cudaStreamSynchronize(blend_blended_tiles_stream);
-                }
-            }
+            // TODO: Implement non-blur path
         }
 
         cudaStreamSynchronize(blend_fovea_stream);

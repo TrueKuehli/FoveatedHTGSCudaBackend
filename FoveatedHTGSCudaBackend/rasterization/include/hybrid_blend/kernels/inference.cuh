@@ -72,8 +72,7 @@ namespace htgs_foveated::rasterization::hybrid_blend::kernels::inference {
             const float4 M3 = c_M[2];
             float z;
             if (transform_and_cull(
-                scales, rotations,
-                position_world, M3,
+                scales, rotations, position_world, M3,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
                 render_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
