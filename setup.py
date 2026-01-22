@@ -21,7 +21,10 @@ for module in cuda_modules:
     all_sources += glob(str(extension_root / module / 'src' / '**' / '*.cu'), recursive=True)
 
 base_sources = [str(extension_root / 'torch_bindings' / 'bindings.cpp')]
-fast_inference_sources = [str(extension_root / 'torch_bindings' / 'bindings_benchmarking.cpp')]
+fast_inference_sources = [
+    str(extension_root / 'torch_bindings' / 'bindings_benchmarking.cpp'),
+    str(extension_root / 'rasterization' / 'src' / 'inference.cu'),
+]
 stereo_sources = [str(extension_root / 'torch_bindings' / 'bindings_stereo.cpp')]
 for src in all_sources:
     if 'stereo' in src:

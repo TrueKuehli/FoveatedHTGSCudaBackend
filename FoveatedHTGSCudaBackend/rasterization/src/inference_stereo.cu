@@ -548,7 +548,7 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_left.MT3,
             per_primitive_buffers_left.rgba,
             background_model.data,
-            blur_periphery ? image_left_final : image_left,  // TODO: When blurring, we need to write to *both*
+            image_left,
             gaze_position_left_tiles,
             0,  // offset into partitioned tile index map
             intrinsics_left.width,
@@ -570,7 +570,7 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_right.MT3,
             per_primitive_buffers_right.rgba,
             background_model.data,
-            blur_periphery ? image_right_final : image_right,  // TODO: When blurring, we need to write to *both*
+            image_right,
             gaze_position_right_tiles,
             0,  // offset into partitioned tile index map
             intrinsics_right.width,
@@ -684,6 +684,30 @@ void htgs_foveated::rasterization::inference_stereo(
         blend_grid_blur_blended_right.y = config::tile_stride_x;
         blend_grid_blur_blended_right.z = config::tile_stride_y;
 
+        if (num_tiles_fovea_left > 0) {
+            kernels::stereo::interpolation::copy_pixels<<<blend_grid_fovea_left, block, 0, blend_fovea_stream_left>>>(
+                image_left_final,
+                image_left,
+                per_sub_tile_buffers_left.tile_index_map_partitioned,
+                0,  // offset into partitioned tile index map
+                intrinsics_left.width,
+                intrinsics_left.height,
+                grid_left_large.x,
+                to_chw
+            );
+        }
+        if (num_tiles_fovea_right > 0) {
+            kernels::stereo::interpolation::copy_pixels<<<blend_grid_fovea_right, block, 0, blend_fovea_stream_right>>>(
+                image_right_final,
+                image_right,
+                per_sub_tile_buffers_right.tile_index_map_partitioned,
+                0,  // offset into partitioned tile index map
+                intrinsics_right.width,
+                intrinsics_right.height,
+                grid_right_large.x,
+                to_chw
+            );
+        }
         if (num_tiles_blended_left > 0) {
             // Wait for fovea + periphery blending to be done
             if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][0], 0);

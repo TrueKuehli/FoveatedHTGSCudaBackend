@@ -327,14 +327,17 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
         const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
         const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
         const dim3 thread_index = block.thread_index();
+        const uint thread_rank = block.thread_rank();
         const uint pixel_offset_x = block.group_index().y % config::tile_stride_x;
         const uint pixel_offset_y = block.group_index().y / config::tile_stride_x;
 
         const uint2 pixel_coords = make_uint2(
-            large_tile_index_2d.x * config::tile_width_large + thread_index.x * config::tile_stride_x + pixel_offset_x,
-            large_tile_index_2d.y * config::tile_width_large + thread_index.y * config::tile_stride_y + pixel_offset_y
+            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x,
+            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y
         );
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
         if (!inside) return;
