@@ -2,14 +2,14 @@
 
 #include "config.h"
 #include "helper_math.h"
-#include "utils/kernel_utils.cuh"
-#include "utils/kernel_utils_aaa.cuh"
+#include "utils/monocular/kernel_utils.cuh"
+#include "utils/monocular/kernel_utils_aaa.cuh"
 #include "utils/rasterization_utils.h"
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 
 
-namespace htgs_foveated::rasterization::kernels::inference {
+namespace htgs_foveated::rasterization::kernels::monocular::inference {
 
     template<bool aaa_mode>
     __global__ void preprocess_cu(

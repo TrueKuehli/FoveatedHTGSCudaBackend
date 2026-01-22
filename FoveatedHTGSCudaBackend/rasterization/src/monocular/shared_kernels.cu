@@ -1,10 +1,10 @@
 #include "helper_math.h"
-#include "shared_kernels.cuh"
-#include "utils/kernel_utils.cuh"
+#include "kernels/monocular/shared_kernels.cuh"
+#include "utils/monocular/kernel_utils.cuh"
 #include <cstdint>
 
 
-namespace htgs_foveated::rasterization::shared_kernels {
+namespace htgs_foveated::rasterization::kernels::monocular::shared {
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(
         const KeyT* instance_keys,

@@ -16,7 +16,10 @@ file(GLOB SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/config.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/*.cuh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/*.cu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/monocular/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/include/kernels/monocular/*.cuh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/monocular/shared_kernels.cu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/rasterization/src/inference.cu"
     "${CMAKE_CURRENT_SOURCE_DIR}/FoveatedHTGSCudaBackend/utils/*.h"
 )
 add_library(FoveatedHTGSRasterizer STATIC ${SOURCES})

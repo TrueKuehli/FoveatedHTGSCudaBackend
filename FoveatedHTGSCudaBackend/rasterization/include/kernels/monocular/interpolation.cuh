@@ -2,11 +2,11 @@
 
 #include "config.h"
 #include "helper_math.h"
-#include "utils/kernel_utils.cuh"
+#include "utils/monocular/kernel_utils.cuh"
 #include <cooperative_groups.h>
 
 
-namespace htgs_foveated::rasterization::kernels::interpolation {
+namespace htgs_foveated::rasterization::kernels::monocular::interpolation {
 
     __global__ void __launch_bounds__(config::block_size_blur) interpolate_missing(
         float* image,

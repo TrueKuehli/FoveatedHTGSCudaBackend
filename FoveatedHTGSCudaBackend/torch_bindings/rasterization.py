@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 import torch
 
-from FoveatedHTGSCudaBackend import _C, _C_benchmarking
+from FoveatedHTGSCudaBackend import _C, _C_benchmarking, _C_stereo
 
 
 class BackgroundModel(Enum):
@@ -119,3 +119,32 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             anti_aliasing,
         )
         return image
+    
+    def render_stereo(
+            self,
+            positions: torch.Tensor,
+            scales: torch.Tensor,
+            rotations: torch.Tensor,
+            opacities: torch.Tensor,
+            sh_0: torch.Tensor,
+            sh_rest: torch.Tensor,
+            settings_left: RasterizerSettings,
+            settings_right: RasterizerSettings,
+            to_chw: bool,
+            blur_periphery: bool,
+            anti_aliasing: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        image_left, image_right = _C_stereo.render(
+            positions,
+            scales,
+            rotations,
+            opacities,
+            sh_0,
+            sh_rest,
+            *settings_left.as_tuple(),
+            *settings_right.as_tuple(),
+            to_chw,
+            blur_periphery,
+            anti_aliasing,
+        )
+        return image_left, image_right

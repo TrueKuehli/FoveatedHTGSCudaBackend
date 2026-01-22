@@ -1,6 +1,6 @@
 #include "config.h"
 #include "helper_math.h"
-#include "utils/kernel_utils.cuh"
+#include "utils/monocular/kernel_utils.cuh"
 #include <cooperative_groups.h>
 
 

@@ -2,11 +2,11 @@
 
 #include "helper_math.h"
 #include "utils/enums.h"
-#include "utils/kernel_utils.cuh"
+#include "utils/monocular/kernel_utils.cuh"
 #include <cstdint>
 
 
-namespace htgs_foveated::rasterization::shared_kernels {
+namespace htgs_foveated::rasterization::kernels::monocular::shared {
 
     template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles>
     __global__ inline void create_instances_cu(

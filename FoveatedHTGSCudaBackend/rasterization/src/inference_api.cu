@@ -48,7 +48,6 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
     const torch::TensorOptions float_options = torch::TensorOptions().dtype(torch::kFloat).device(torch::kCUDA);
     const torch::TensorOptions byte_options = torch::TensorOptions().dtype(torch::kByte).device(torch::kCUDA);
     torch::Tensor image = to_chw ? torch::zeros({3, height, width}, float_options) : torch::zeros({height, width, 3}, float_options);
-    torch::Tensor depth = torch::empty({height, width}, float_options);
     torch::Tensor per_primitive_buffers = torch::empty({0}, byte_options);
     torch::Tensor per_tile_buffers = torch::empty({0}, byte_options);
     torch::Tensor per_subtile_buffers = torch::empty({0}, byte_options);

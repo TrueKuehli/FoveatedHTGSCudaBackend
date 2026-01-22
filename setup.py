@@ -22,9 +22,21 @@ for module in cuda_modules:
 
 base_sources = [str(extension_root / 'torch_bindings' / 'bindings.cpp')]
 fast_inference_sources = [str(extension_root / 'torch_bindings' / 'bindings_benchmarking.cpp')]
+stereo_sources = [str(extension_root / 'torch_bindings' / 'bindings_stereo.cpp')]
 for src in all_sources:
-    fast_inference_sources.append(src)
-    base_sources.append(src)
+    if 'stereo' in src:
+        stereo_sources.append(src)
+    elif 'monocular' in src:
+        fast_inference_sources.append(src)
+        base_sources.append(src)
+    elif 'fast_inference' in src:
+        fast_inference_sources.append(src)
+    elif 'inference' in src:
+        base_sources.append(src)
+    else:
+        base_sources.append(src)
+        fast_inference_sources.append(src)
+        stereo_sources.append(src)
 
 include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
@@ -57,11 +69,21 @@ fast_inference_extension = CUDAExtension(
     }
 )
 
+stereo_extension = CUDAExtension(
+    name=f'{extension_name}._C_stereo',
+    sources=stereo_sources,
+    include_dirs=include_dirs,
+    extra_compile_args={
+        'cxx': cxx_flags + benchmark_cxx_flags,
+        'nvcc': nvcc_flags + benchmark_nvcc_flags
+    }
+)
+
 setup(
     name=extension_name,
     author=__author__,
     packages=[extension_name],
-    ext_modules=[base_extension, fast_inference_extension],
+    ext_modules=[base_extension, fast_inference_extension, stereo_extension],
     description=__description__,
     cmdclass={'build_ext': BuildExtension}
 )

@@ -16,13 +16,15 @@
 #endif
 
 
-__device__ __constant__ float4 c_M[3];
-__device__ __constant__ float4 c_VPM[4];
-__device__ __constant__ float4 c_VPR_inv[4];
-__device__ __constant__ float3 c_cam_position;
-__device__ __constant__ float2 c_gaze_position_cuda;
+__device__ __constant__ float4 c_M[2][3];
+__device__ __constant__ float4 c_VPM[2][4];
+__device__ __constant__ float4 c_VPR_inv[2][4];
+__device__ __constant__ float3 c_cam_position[2];
+__device__ __constant__ float2 c_gaze_position_cuda[2];
+__device__ __constant__ uint32_t c_render_mask[2][2048];  // Sufficient for 256x256 tiles (total 65,536 tiles = 16 MP)
+
 __device__ __constant__ float3 c_background_sh_coeff[16];
-__device__ __constant__ uint32_t c_render_mask[4096];  // Sufficient for ~362x362 tiles (total 131,072)
+
 
 struct Mat3x3 {
     float r11, r12, r13;
@@ -118,6 +120,7 @@ __forceinline__ __device__ Mat3x3 convert_quaternion_to_rotation_matrix(
 }
 
 
+template<bool second_camera>
 __forceinline__ __device__ bool transform_and_cull(
     const float3* scales,
     const float4* rotations,
@@ -160,7 +163,7 @@ __forceinline__ __device__ bool transform_and_cull(
     u = make_float3(R.r11 * scale.x, R.r21 * scale.x, R.r31 * scale.x) * scale_modifier;
     v = make_float3(R.r12 * scale.y, R.r22 * scale.y, R.r32 * scale.y) * scale_modifier;
     w = make_float3(R.r13 * scale.z, R.r23 * scale.z, R.r33 * scale.z) * scale_modifier;
-    const float4 VPM4 = c_VPM[3];
+    const float4 VPM4 = c_VPM[second_camera][3];
     VPMT4 = make_float4(dot(make_float3(VPM4), u), dot(make_float3(VPM4), v), dot(make_float3(VPM4), w), dot(make_float3(VPM4), position_world) + VPM4.w);
     // tight cutoff for the used opacity threshold
     const float rho_cutoff = 2.0f * logf(opacity * min_alpha_threshold_rcp);
@@ -169,7 +172,7 @@ __forceinline__ __device__ bool transform_and_cull(
     if (s == 0.0f) return true;
     const float4 f = (1.0f / s) * d;
     // start with z-extent in screen-space for exact near_plane/far_plane plane culling
-    const float4 VPM3 = c_VPM[2];
+    const float4 VPM3 = c_VPM[second_camera][2];
     const float4 VPMT3 = make_float4(dot(make_float3(VPM3), u), dot(make_float3(VPM3), v), dot(make_float3(VPM3), w), dot(make_float3(VPM3), position_world) + VPM3.w);
     const float center_z = dot(f, VPMT3 * VPMT4);
     const float extent_z = sqrtf(fmaxf(center_z * center_z - dot(f, VPMT3 * VPMT3), 0.0f));
@@ -177,11 +180,11 @@ __forceinline__ __device__ bool transform_and_cull(
     const float z_max = center_z + extent_z;
     if (z_min < -1.0f || z_max > 1.0f) return true;
     // now x/y-extent of the screen-space bounding box
-    const float4 VPM1 = c_VPM[0];
+    const float4 VPM1 = c_VPM[second_camera][0];
     VPMT1 = make_float4(dot(make_float3(VPM1), u), dot(make_float3(VPM1), v), dot(make_float3(VPM1), w), dot(make_float3(VPM1), position_world) + VPM1.w);
     const float center_x = dot(f, VPMT1 * VPMT4);
     const float extent_x = sqrtf(fmaxf(center_x * center_x - dot(f, VPMT1 * VPMT1), 0.0f));
-    const float4 VPM2 = c_VPM[1];
+    const float4 VPM2 = c_VPM[second_camera][1];
     VPMT2 = make_float4(dot(make_float3(VPM2), u), dot(make_float3(VPM2), v), dot(make_float3(VPM2), w), dot(make_float3(VPM2), position_world) + VPM2.w);
     const float center_y = dot(f, VPMT2 * VPMT4);
     const float extent_y = sqrtf(fmaxf(center_y * center_y - dot(f, VPMT2 * VPMT2), 0.0f));
@@ -241,7 +244,7 @@ __forceinline__ __device__ bool transform_and_cull(
     return n_touched_tiles == 0;
 }
 
-template <bool train_mode>
+template <bool train_mode, bool second_camera>
 __forceinline__ __device__ float3 convert_sh_to_rgb(
     const float3* sh_0,
     const float3* sh_rest,
@@ -256,7 +259,7 @@ __forceinline__ __device__ float3 convert_sh_to_rgb(
     float3 result = 0.5f + 0.28209479177387814f * sh_0[primitive_idx];
     if (active_sh_bases > 1) {
         const float3* coefficients_ptr = sh_rest + primitive_idx * total_sh_bases;
-        auto [x, y, z] = normalize(position_world - c_cam_position);
+        auto [x, y, z] = normalize(position_world - c_cam_position[second_camera]);
         result = result + (-0.48860251190291987f * y) * coefficients_ptr[0]
                         + (0.48860251190291987f * z) * coefficients_ptr[1]
                         + (-0.48860251190291987f * x) * coefficients_ptr[2];
@@ -292,13 +295,14 @@ __forceinline__ __device__ float3 convert_sh_to_rgb(
 }
 
 
+template<bool second_camera>
 __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, const float pixel_y) {
     // computation adapted from https://github.com/NVlabs/tiny-cuda-nn/blob/212104156403bd87616c1a4f73a1c5f2c2e172a9/include/tiny-cuda-nn/common_device.h#L340
     const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
     const float3 pixel_coords_transformed = normalize(make_float3(
-        dot(c_VPR_inv[0], pixel_coords),
-        dot(c_VPR_inv[1], pixel_coords),
-        dot(c_VPR_inv[2], pixel_coords)
+        dot(c_VPR_inv[second_camera][0], pixel_coords),
+        dot(c_VPR_inv[second_camera][1], pixel_coords),
+        dot(c_VPR_inv[second_camera][2], pixel_coords)
     ));
 
     // TODO: Test if branching is faster (since that could save some computations for any grid cells that are fully below the horizon)
@@ -339,14 +343,14 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
 }
 
 
-template<int width, int height>
+template<int width, int height, bool second_camera>
 __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x, const float pixel_y, const float* texture_data) {
     // computation adapted from https://github.com/NVlabs/tiny-cuda-nn/blob/212104156403bd87616c1a4f73a1c5f2c2e172a9/include/tiny-cuda-nn/common_device.h#L340
     const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
     const float3 pixel_coords_transformed = normalize(make_float3(
-        dot(c_VPR_inv[0], pixel_coords),
-        dot(c_VPR_inv[1], pixel_coords),
-        dot(c_VPR_inv[2], pixel_coords)
+        dot(c_VPR_inv[second_camera][0], pixel_coords),
+        dot(c_VPR_inv[second_camera][1], pixel_coords),
+        dot(c_VPR_inv[second_camera][2], pixel_coords)
     ));
 
     // TODO: Test if branching is faster (since that could save some computations / memory accesses for any grid cells that are fully below the horizon)
