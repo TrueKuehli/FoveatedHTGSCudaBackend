@@ -78,7 +78,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             to_chw: bool,
             blur_periphery: bool,
             anti_aliasing: bool,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         image = _C.render(
             positions,
             scales,
@@ -148,3 +148,16 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             anti_aliasing,
         )
         return image_left, image_right
+
+    def visualize_gaze(
+            self,
+            image: torch.Tensor,
+            gaze_position: torch.Tensor,
+            to_chw: bool,
+    ) -> torch.Tensor:
+        image = _C.visualize_gaze(
+            image,
+            gaze_position,
+            to_chw,
+        )
+        return image

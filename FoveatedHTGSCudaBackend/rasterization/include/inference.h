@@ -46,7 +46,7 @@ namespace htgs_foveated::rasterization {
         const bool blur_periphery,
         const bool anti_aliasing);
 
-    void renderGazePosition(
+    void render_gaze_position(
         float* image,
         const int width,
         const int height,

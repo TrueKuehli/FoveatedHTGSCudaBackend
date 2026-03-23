@@ -105,3 +105,22 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
 
     return image;
 }
+
+// TODO: Extract to separate file
+torch::Tensor htgs_foveated::rasterization::visualize_gaze_wrapper(
+    const torch::Tensor& image,
+    const torch::Tensor& gaze_position,
+    const bool to_chw
+) {
+    const int width = image.size(to_chw ? 2 : 1);
+    const int height = image.size(to_chw ? 1 : 0);
+    render_gaze_position(
+        image.data_ptr<float>(),
+        width,
+        height,
+        reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
+        to_chw
+    );
+
+    return image;
+}

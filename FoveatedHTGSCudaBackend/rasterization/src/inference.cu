@@ -428,9 +428,9 @@ void htgs_foveated::rasterization::inference(
 }
 
 
-// TODO: Extract to separate file
+// TODO: Extract to separate file, and optimize
 
-void htgs_foveated::rasterization::renderGazePosition(
+void htgs_foveated::rasterization::render_gaze_position(
     float* image,
     const int width,
     const int height,
@@ -442,8 +442,9 @@ void htgs_foveated::rasterization::renderGazePosition(
         clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
     );
     cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
-    cudaMemset(image, 0, sizeof(float) * width * height * 3);
+    // cudaMemset(image, 0, sizeof(float) * width * height * 3);  // TODO: Optional argument: clear image before rendering gaze position
 
+    // TODO: Make size & color arguments
     // Draw a red dot at the gaze position for visualization
     const dim3 dot_grid(div_round_up(config::gaze_visualization_width, config::tile_width_small), div_round_up(config::gaze_visualization_width, config::tile_width_small), 1);
     const dim3 dot_block(config::tile_width_small, config::tile_width_small, 1);
