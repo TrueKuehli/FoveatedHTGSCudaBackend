@@ -53,16 +53,19 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
     template __global__ void extract_instance_ranges_cu<ushort>(
         const ushort*, uint2*, const uint);
 
-    __global__ void get_partition_offsets_cu(
-        int* partition_offsets,
+    __global__ void get_partition_ranges_cu(
+        uint2* partition_ranges,
         const TileType* tile_type_map,
         const uint n_tiles
     ) {
         const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (tile_idx >= n_tiles) return;
+        if (tile_idx == 0) return;  // All values are memset to 0 anyway
 
-        if (tile_idx > 0 && tile_type_map[tile_idx] != tile_type_map[tile_idx - 1]) {
-            partition_offsets[static_cast<uint8_t>(tile_type_map[tile_idx]) - 1] = tile_idx;
+        if (tile_type_map[tile_idx] != tile_type_map[tile_idx - 1]) {
+            partition_ranges[tile_idx].x = tile_idx;
+            partition_ranges[tile_idx - 1].y = tile_idx;
         }
+        if (tile_idx == n_tiles - 1) partition_ranges[tile_idx].y = n_tiles;
     }
 }

@@ -166,8 +166,8 @@ namespace htgs_foveated::rasterization::kernels::monocular::shared {
         }
     }
 
-    __global__ void get_partition_offsets_cu(
-        int* partition_offsets,
+    __global__ void get_partition_ranges_cu(
+        uint2* partition_ranges,
         const TileType* tile_type_map,
         const uint n_tiles
     );

@@ -153,10 +153,14 @@ void htgs_foveated::rasterization::inference_stereo(
             memset_stream_initialized = true;
         }
         cudaMemsetAsync(per_sub_tile_buffers_left.instance_ranges, 0, sizeof(uint2) * n_tiles_left, memset_left_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_left.partition_ranges, 0, sizeof(PartitionRanges), memset_left_stream);
         cudaMemsetAsync(per_sub_tile_buffers_right.instance_ranges, 0, sizeof(uint2) * n_tiles_right, memset_right_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_right.partition_ranges, 0, sizeof(PartitionRanges), memset_right_stream);
     } else {
         cudaMemset(per_sub_tile_buffers_left.instance_ranges, 0, sizeof(uint2) * n_tiles_left);
+        cudaMemset(per_sub_tile_buffers_left.partition_ranges, 0, sizeof(PartitionRanges));
         cudaMemset(per_sub_tile_buffers_right.instance_ranges, 0, sizeof(uint2) * n_tiles_right);
+        cudaMemset(per_sub_tile_buffers_right.partition_ranges, 0, sizeof(PartitionRanges));
     }
 
     static cudaStream_t preprocess_left_stream = 0;
@@ -261,18 +265,22 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "Sort tiles by type right")
 
-    kernels::stereo::shared::get_partition_offsets_cu
-            <<<div_round_up(static_cast<int>(num_active_tiles_left), config::block_size_get_partition_offsets), config::block_size_get_partition_offsets, 0, preprocess_left_stream>>>
+    if constexpr (!config::debug_inference) {
+        cudaStreamSynchronize(memset_left_stream);
+        cudaStreamSynchronize(memset_right_stream);
+    }
+    kernels::stereo::shared::get_partition_ranges_cu
+            <<<div_round_up(static_cast<int>(num_active_tiles_left), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges, 0, preprocess_left_stream>>>
     (
-        reinterpret_cast<int*>(per_sub_tile_buffers_left.partition_offsets),
+        reinterpret_cast<uint2*>(per_sub_tile_buffers_left.partition_ranges),
         per_sub_tile_buffers_left.tile_type_partitioned,
         num_active_tiles_left
     );
     CHECK_CUDA(config::debug_inference, "Partition tiles by type (left)")
-    kernels::stereo::shared::get_partition_offsets_cu
-            <<<div_round_up(static_cast<int>(num_active_tiles_right), config::block_size_get_partition_offsets), config::block_size_get_partition_offsets, 0, preprocess_right_stream>>>
+    kernels::stereo::shared::get_partition_ranges_cu
+            <<<div_round_up(static_cast<int>(num_active_tiles_right), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges, 0, preprocess_right_stream>>>
     (
-        reinterpret_cast<int*>(per_sub_tile_buffers_right.partition_offsets),
+        reinterpret_cast<uint2*>(per_sub_tile_buffers_right.partition_ranges),
         per_sub_tile_buffers_right.tile_type_partitioned,
         num_active_tiles_right
     );
@@ -282,18 +290,18 @@ void htgs_foveated::rasterization::inference_stereo(
     cudaStreamSynchronize(preprocess_left_stream);
     cudaStreamSynchronize(preprocess_right_stream);
 
-    PartitionOffsets offsets_cpu_left;
-    PartitionOffsets offsets_cpu_right;
-    cudaMemcpy(&offsets_cpu_left, per_sub_tile_buffers_left.partition_offsets, sizeof(PartitionOffsets), cudaMemcpyDeviceToHost);
+    PartitionRanges partition_ranges_cpu_left;
+    PartitionRanges partition_ranges_cpu_right;
+    cudaMemcpy(&partition_ranges_cpu_left, per_sub_tile_buffers_left.partition_ranges, sizeof(PartitionRanges), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch partition offsets left")
-    cudaMemcpy(&offsets_cpu_right, per_sub_tile_buffers_right.partition_offsets, sizeof(PartitionOffsets), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&partition_ranges_cpu_right, per_sub_tile_buffers_right.partition_ranges, sizeof(PartitionRanges), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch partition offsets right")
-    const int num_tiles_fovea_left = offsets_cpu_left.periphery_tiles_offset;
-    const int num_tiles_periphery_left = offsets_cpu_left.blended_tiles_offset - offsets_cpu_left.periphery_tiles_offset;
-    const int num_tiles_blended_left = num_active_tiles_left - offsets_cpu_left.blended_tiles_offset;
-    const int num_tiles_fovea_right = offsets_cpu_right.periphery_tiles_offset;
-    const int num_tiles_periphery_right = offsets_cpu_right.blended_tiles_offset - offsets_cpu_right.periphery_tiles_offset;
-    const int num_tiles_blended_right = num_active_tiles_right - offsets_cpu_right.blended_tiles_offset;
+    const int num_tiles_fovea_left = partition_ranges_cpu_left.fovea_tiles_range.y - partition_ranges_cpu_left.fovea_tiles_range.x;
+    const int num_tiles_periphery_left = partition_ranges_cpu_left.periphery_tiles_range.y - partition_ranges_cpu_left.periphery_tiles_range.x;
+    const int num_tiles_blended_left = partition_ranges_cpu_left.blended_tiles_range.y - partition_ranges_cpu_left.blended_tiles_range.x;
+    const int num_tiles_fovea_right = partition_ranges_cpu_right.fovea_tiles_range.y - partition_ranges_cpu_right.fovea_tiles_range.x;
+    const int num_tiles_periphery_right = partition_ranges_cpu_right.periphery_tiles_range.y - partition_ranges_cpu_right.periphery_tiles_range.x;
+    const int num_tiles_blended_right = partition_ranges_cpu_right.blended_tiles_range.y - partition_ranges_cpu_right.blended_tiles_range.x;
 
     const auto preprocess_left = anti_aliasing ?
         kernels::stereo::inference::preprocess_cu<true, false> :
@@ -456,11 +464,6 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (right)")
 
-    if constexpr (!config::debug_inference) {
-        cudaStreamSynchronize(memset_left_stream);
-        cudaStreamSynchronize(memset_right_stream);
-    } 
-
     if (n_instances_left > 0) {
         kernels::stereo::shared::extract_instance_ranges_cu<uint><<<div_round_up(n_instances_left, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_left_stream>>>(
             per_instance_buffers_left.keys.Current(),
@@ -550,7 +553,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_left,
             gaze_position_left_tiles,
-            0,  // offset into partitioned tile index map
+            partition_ranges_cpu_left.fovea_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
             grid_left_large.x,
@@ -572,7 +575,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_right,
             gaze_position_right_tiles,
-            0,  // offset into partitioned tile index map
+            partition_ranges_cpu_right.fovea_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
             grid_right_large.x,
@@ -594,7 +597,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_left,
             gaze_position_left_tiles,
-            offsets_cpu_left.blended_tiles_offset,
+            partition_ranges_cpu_left.blended_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
             grid_left_large.x,
@@ -616,7 +619,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_right,
             gaze_position_right_tiles,
-            offsets_cpu_right.blended_tiles_offset,
+            partition_ranges_cpu_right.blended_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
             grid_right_large.x,
@@ -638,7 +641,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_left,
             gaze_position_left_tiles,
-            offsets_cpu_left.periphery_tiles_offset,
+            partition_ranges_cpu_left.periphery_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
             grid_left_large.x,
@@ -660,7 +663,7 @@ void htgs_foveated::rasterization::inference_stereo(
             background_model.data,
             image_right,
             gaze_position_right_tiles,
-            offsets_cpu_right.periphery_tiles_offset,
+            partition_ranges_cpu_right.periphery_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
             grid_right_large.x,
@@ -716,7 +719,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 image_left_final,
                 image_left,
                 per_sub_tile_buffers_left.tile_index_map_partitioned,
-                offsets_cpu_left.blended_tiles_offset,
+                partition_ranges_cpu_left.blended_tiles_range.x,
                 intrinsics_left.width,
                 intrinsics_left.height,
                 grid_left_large.x,
@@ -733,7 +736,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 image_right_final,
                 image_right,
                 per_sub_tile_buffers_right.tile_index_map_partitioned,
-                offsets_cpu_right.blended_tiles_offset,
+                partition_ranges_cpu_right.blended_tiles_range.x,
                 intrinsics_right.width,
                 intrinsics_right.height,
                 grid_right_large.x,
@@ -750,7 +753,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 image_left_final,
                 image_left,
                 per_sub_tile_buffers_left.tile_index_map_partitioned,
-                offsets_cpu_left.periphery_tiles_offset,
+                partition_ranges_cpu_left.periphery_tiles_range.x,
                 intrinsics_left.width,
                 intrinsics_left.height,
                 grid_left_large.x,
@@ -765,7 +768,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 image_right_final,
                 image_right,
                 per_sub_tile_buffers_right.tile_index_map_partitioned,
-                offsets_cpu_right.periphery_tiles_offset,
+                partition_ranges_cpu_right.periphery_tiles_range.x,
                 intrinsics_right.width,
                 intrinsics_right.height,
                 grid_right_large.x,

@@ -136,8 +136,11 @@ void htgs_foveated::rasterization::inference(
             memset_stream_initialized = true;
         }
         cudaMemsetAsync(per_sub_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles, memset_stream);
+        cudaMemsetAsync(per_sub_tile_buffers.partition_ranges, 0, sizeof(PartitionRanges), memset_stream);
+    } else {
+        cudaMemset(per_sub_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles);
+        cudaMemset(per_sub_tile_buffers.partition_ranges, 0, sizeof(PartitionRanges));
     }
-    else cudaMemset(per_sub_tile_buffers.instance_ranges, 0, sizeof(uint2) * n_tiles);
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
     kernels::monocular::shared::fill_tile_index_num_tiles
@@ -182,20 +185,21 @@ void htgs_foveated::rasterization::inference(
         num_active_tiles, 0, NUM_TILE_TYPE_BITS
     );
     CHECK_CUDA(config::debug_inference, "Sort tiles by type")
-    kernels::monocular::shared::get_partition_offsets_cu
-            <<<div_round_up(static_cast<int>(num_active_tiles), config::block_size_get_partition_offsets), config::block_size_get_partition_offsets>>>
+    if constexpr (!config::debug_inference) cudaStreamSynchronize(memset_stream);
+    kernels::monocular::shared::get_partition_ranges_cu
+            <<<div_round_up(static_cast<int>(num_active_tiles), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges>>>
     (
-        reinterpret_cast<int*>(per_sub_tile_buffers.partition_offsets),
+        reinterpret_cast<uint2*>(per_sub_tile_buffers.partition_ranges),
         per_sub_tile_buffers.tile_type_partitioned,
         num_active_tiles
     );
     CHECK_CUDA(config::debug_inference, "Partition tiles by type")
 
-    PartitionOffsets offsets_cpu;
-    cudaMemcpy(&offsets_cpu, per_sub_tile_buffers.partition_offsets, sizeof(PartitionOffsets), cudaMemcpyDeviceToHost);
-    const int num_tiles_fovea = offsets_cpu.periphery_tiles_offset;
-    const int num_tiles_periphery = offsets_cpu.blended_tiles_offset - offsets_cpu.periphery_tiles_offset;
-    const int num_tiles_blended = num_active_tiles - offsets_cpu.blended_tiles_offset;
+    PartitionRanges partition_ranges_cpu;
+    cudaMemcpy(&partition_ranges_cpu, per_sub_tile_buffers.partition_ranges, sizeof(PartitionRanges), cudaMemcpyDeviceToHost);
+    const int num_tiles_fovea = partition_ranges_cpu.fovea_tiles_range.y - partition_ranges_cpu.fovea_tiles_range.x;
+    const int num_tiles_periphery = partition_ranges_cpu.periphery_tiles_range.y - partition_ranges_cpu.periphery_tiles_range.x;
+    const int num_tiles_blended = partition_ranges_cpu.blended_tiles_range.y - partition_ranges_cpu.blended_tiles_range.x;
 
     const auto preprocess = anti_aliasing ?
         kernels::monocular::inference::preprocess_cu<true> :
@@ -288,8 +292,6 @@ void htgs_foveated::rasterization::inference(
         instance_primitive_indices_selector = per_instance_buffers.primitive_indices.selector;
         CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs")
 
-        if constexpr (!config::debug_inference) cudaStreamSynchronize(memset_stream);
-
         if (n_instances > 0) {
             kernels::monocular::shared::extract_instance_ranges_cu<KeyT><<<div_round_up(n_instances, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges>>>(
                 per_instance_buffers.keys.Current(),
@@ -328,7 +330,7 @@ void htgs_foveated::rasterization::inference(
                 background_model_data,
                 image,
                 gaze_position_tiles,
-                offsets_cpu.blended_tiles_offset,
+                partition_ranges_cpu.blended_tiles_range.x,
                 width,
                 height,
                 grid_large.x,
@@ -349,7 +351,7 @@ void htgs_foveated::rasterization::inference(
                 background_model_data,
                 image,
                 gaze_position_tiles,
-                offsets_cpu.periphery_tiles_offset,
+                partition_ranges_cpu.periphery_tiles_range.x,
                 width,
                 height,
                 grid_large.x,
@@ -370,7 +372,7 @@ void htgs_foveated::rasterization::inference(
                 background_model_data,
                 blur_periphery ? image_final : image,
                 gaze_position_tiles,
-                0,  // offset into partitioned tile index map
+                partition_ranges_cpu.fovea_tiles_range.x,
                 width,
                 height,
                 grid_large.x,
@@ -394,7 +396,7 @@ void htgs_foveated::rasterization::inference(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
-                    offsets_cpu.periphery_tiles_offset,
+                    partition_ranges_cpu.periphery_tiles_range.x,
                     width,
                     height,
                     grid_large.x,
@@ -408,7 +410,7 @@ void htgs_foveated::rasterization::inference(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
-                    offsets_cpu.blended_tiles_offset,
+                    partition_ranges_cpu.blended_tiles_range.x,
                     width,
                     height,
                     grid_large.x,

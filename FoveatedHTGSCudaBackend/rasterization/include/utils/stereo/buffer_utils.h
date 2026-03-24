@@ -105,9 +105,10 @@ namespace htgs_foveated::rasterization {
         }
     };
 
-    struct PartitionOffsets {
-        int periphery_tiles_offset;
-        int blended_tiles_offset;
+    struct PartitionRanges {
+        uint2 fovea_tiles_range;
+        uint2 periphery_tiles_range;
+        uint2 blended_tiles_range;
     };
 
     struct PerSubTileBuffers {
@@ -119,7 +120,7 @@ namespace htgs_foveated::rasterization {
         uint* tile_index_map_partitioned;
         TileType* tile_type;
         TileType* tile_type_partitioned;
-        PartitionOffsets* partition_offsets;
+        PartitionRanges* partition_ranges;
 
         static PerSubTileBuffers from_blob(char*& blob, size_t n_tiles) {
             PerSubTileBuffers buffers;
@@ -128,7 +129,7 @@ namespace htgs_foveated::rasterization {
             obtain(blob, buffers.tile_index_map_partitioned, n_tiles, 128);
             obtain(blob, buffers.tile_type, n_tiles, 128);
             obtain(blob, buffers.tile_type_partitioned, n_tiles, 128);
-            obtain(blob, buffers.partition_offsets, 1, 128);
+            obtain(blob, buffers.partition_ranges, 1, 128);
 
             cub::DeviceRadixSort::SortPairs(
                 nullptr, buffers.cub_workspace_size,
