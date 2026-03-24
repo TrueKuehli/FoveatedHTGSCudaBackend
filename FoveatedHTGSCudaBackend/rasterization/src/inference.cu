@@ -113,8 +113,8 @@ void htgs_foveated::rasterization::inference(
 
     // Round gaze to nearest large tile (top left corner of tile)
     const uint2 gaze_position_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position->x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid.y - 1), (static_cast<int>(gaze_position->y) + config::tile_width_large / 2) / config::tile_width_large)))
+        static_cast<uint>(max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position_clamped.x) + config::tile_width_large / 2) / config::tile_width_large))),
+        static_cast<uint>(max(0, min(static_cast<int>(grid.y - 1), (static_cast<int>(gaze_position_clamped.y) + config::tile_width_large / 2) / config::tile_width_large)))
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;

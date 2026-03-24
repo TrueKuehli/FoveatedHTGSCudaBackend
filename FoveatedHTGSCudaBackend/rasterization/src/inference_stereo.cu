@@ -118,12 +118,12 @@ void htgs_foveated::rasterization::inference_stereo(
 
     // Round gaze to nearest large tile (top left corner of tile)
     const uint2 gaze_position_left_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid_left.x - 1), (static_cast<int>(pose_left.gaze_position->x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid_left.y - 1), (static_cast<int>(pose_left.gaze_position->y) + config::tile_width_large / 2) / config::tile_width_large)))
+        static_cast<uint>(max(0, min(static_cast<int>(grid_left.x - 1), (static_cast<int>(gaze_position_clamped_left.x) + config::tile_width_large / 2) / config::tile_width_large))),
+        static_cast<uint>(max(0, min(static_cast<int>(grid_left.y - 1), (static_cast<int>(gaze_position_clamped_left.y) + config::tile_width_large / 2) / config::tile_width_large)))
     );
     const uint2 gaze_position_right_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid_right.x - 1), (static_cast<int>(pose_right.gaze_position->x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid_right.y - 1), (static_cast<int>(pose_right.gaze_position->y) + config::tile_height_large / 2) / config::tile_height_large)))
+        static_cast<uint>(max(0, min(static_cast<int>(grid_right.x - 1), (static_cast<int>(gaze_position_clamped_right.x) + config::tile_width_large / 2) / config::tile_width_large))),
+        static_cast<uint>(max(0, min(static_cast<int>(grid_right.y - 1), (static_cast<int>(gaze_position_clamped_right.y) + config::tile_height_large / 2) / config::tile_height_large)))
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
