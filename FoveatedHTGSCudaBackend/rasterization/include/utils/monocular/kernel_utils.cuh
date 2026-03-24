@@ -77,13 +77,13 @@ __forceinline__ __device__ bool is_in_fovea(
     const uint grid_width,
     const uint2 gaze_position_tiles)
 {
-    constexpr uint radius_sq = radius * radius;
-    const int2 tile_coords = make_int2(
-        tile_idx % grid_width,
-        tile_idx / grid_width
+    constexpr float radius_sq = static_cast<float>(radius * radius);
+    const float2 tile_coords = make_float2(
+        tile_idx % grid_width + 0.5,
+        tile_idx / grid_width + 0.5
     );
-    const int2 to_gaze = tile_coords - make_int2(gaze_position_tiles.x, gaze_position_tiles.y);
-    const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
+    const float2 to_gaze = tile_coords - make_float2(gaze_position_tiles.x, gaze_position_tiles.y);
+    const float squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
     return squared_distance_to_gaze < radius_sq;
 }
@@ -95,9 +95,9 @@ __forceinline__ __device__ bool is_in_fovea(
     const uint grid_width,
     const int2 gaze_position_tiles)
 {
-    constexpr uint radius_sq = radius * radius;
-    const int2 to_gaze = tile_coords - gaze_position_tiles;
-    const int squared_distance_to_gaze = dot(to_gaze, to_gaze);
+    constexpr float radius_sq = static_cast<float>(radius * radius);
+    const float2 to_gaze = make_float2(tile_coords.x + 0.5f, tile_coords.y + 0.5f) - make_float2(gaze_position_tiles.x, gaze_position_tiles.y);
+    const float squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
     return squared_distance_to_gaze < radius_sq;
 }
