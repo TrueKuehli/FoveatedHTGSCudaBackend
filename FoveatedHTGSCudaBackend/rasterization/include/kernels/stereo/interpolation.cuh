@@ -239,7 +239,11 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
 
         // Determine blending factor
         const float2 dist_from_gaze = c_gaze_position_cuda[second_camera] - make_float2(pixel_x, pixel_y);
-        const float blend_factor = clamp((length(dist_from_gaze) - config::blend_radius) / config::blend_width, 0.0f, 1.0f);
+        const float blend_factor = clamp(
+                (length(dist_from_gaze) - config::blend_radius - 1.5f * config::tile_width_large)
+                / (config::blend_width - 1.5f * config::tile_width_large),
+                0.0f, 1.0f
+        );
 
         // The following assumes pixel stride of 2
         float3 blurred_rgb = make_float3(0.0f);
@@ -300,16 +304,30 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
             blurred_rgb += sample_rgb(image, pixel_x + 1, pixel_y + 1, width, height, output_chw);
         }
 
-        if (output_chw) {
-            const int n_pixels = width * height;
-            image_blurred[pixel_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
-            image_blurred[n_pixels + pixel_idx] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
-            image_blurred[2 * n_pixels + pixel_idx] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
+        if (blend_factor > 0.0f) {
+            if (output_chw) {
+                const int n_pixels = width * height;
+                image_blurred[pixel_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
+                image_blurred[n_pixels + pixel_idx] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
+                image_blurred[2 * n_pixels + pixel_idx] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
+            } else {
+                const int base_idx = 3 * pixel_idx;
+                image_blurred[base_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
+                image_blurred[base_idx + 1] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
+                image_blurred[base_idx + 2] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
+            }
         } else {
-            const int base_idx = 3 * pixel_idx;
-            image_blurred[base_idx] = __saturatef(center_rgb.x * (1.0f - blend_factor) + blurred_rgb.x * blur_factor * blend_factor);
-            image_blurred[base_idx + 1] = __saturatef(center_rgb.y * (1.0f - blend_factor) + blurred_rgb.y * blur_factor * blend_factor);
-            image_blurred[base_idx + 2] = __saturatef(center_rgb.z * (1.0f - blend_factor) + blurred_rgb.z * blur_factor * blend_factor);
+            if (output_chw) {
+                const int n_pixels = width * height;
+                image_blurred[pixel_idx] = center_rgb.x;
+                image_blurred[n_pixels + pixel_idx] = center_rgb.y;
+                image_blurred[2 * n_pixels + pixel_idx] = center_rgb.z;
+            } else {
+                const int base_idx = 3 * pixel_idx;
+                image_blurred[base_idx] = center_rgb.x;
+                image_blurred[base_idx + 1] = center_rgb.y;
+                image_blurred[base_idx + 2] = center_rgb.z;
+            }
         }
     }
 
