@@ -161,3 +161,18 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             to_chw,
         )
         return image
+
+    def visualize_tile_boundaries(
+            self,
+            image: torch.Tensor,
+            visibility_mask: torch.Tensor,
+            gaze_position: torch.Tensor,
+            to_chw: bool,
+    ) -> torch.Tensor:
+        image = _C.visualize_tile_boundaries(
+            image,
+            visibility_mask,
+            gaze_position,
+            to_chw,
+        )
+        return image

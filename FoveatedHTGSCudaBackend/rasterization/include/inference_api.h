@@ -41,4 +41,10 @@ namespace htgs_foveated::rasterization {
         const torch::Tensor& image,
         const torch::Tensor& gaze_position,
         const bool to_chw);
+
+    torch::Tensor visualize_tile_boundaries_wrapper(
+        const torch::Tensor& image,
+        const torch::Tensor& render_mask,
+        const torch::Tensor& gaze_position,
+        const bool to_chw);
 }

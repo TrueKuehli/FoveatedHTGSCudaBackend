@@ -39,4 +39,65 @@ namespace htgs_foveated::rasterization::kernels::visualization {
             image[base_idx + 2] = 0.0f;
         }
     }
+
+    __global__ void __launch_bounds__(config::num_border_pixels_large) visualize_tile_boundaries_cu(
+        float* image,
+        const float3 color,
+        const uint* tile_index_map,
+        const uint tile_offset,
+        const uint width,
+        const uint height,
+        const uint tile_width,
+        const uint tile_height,
+        const uint grid_width,
+        const bool output_chw)
+    {
+        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+        const uint group_index = block.group_index().x + tile_offset;
+        const uint true_group_index = tile_index_map[group_index];
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
+        const int thread_index = block.thread_index().x;
+
+        // Map linear thread index to tile border pixel coordinates
+        int tile_pixel_x;
+        int tile_pixel_y;
+        if (thread_index < tile_width) {
+            // top border
+            tile_pixel_x = thread_index;
+            tile_pixel_y = 0;
+        } else if (thread_index < 2 * tile_width) {
+            // bottom border
+            tile_pixel_x = thread_index - tile_width;
+            tile_pixel_y = tile_height - 1;
+        } else if (thread_index < 2 * tile_width + tile_height - 2) {
+            // left border
+            tile_pixel_x = 0;
+            tile_pixel_y = thread_index - 2 * tile_width + 1;
+        } else {
+            tile_pixel_x = tile_width - 1;
+            tile_pixel_y = thread_index - (2 * tile_width + tile_height - 2) + 1;
+        }
+        const uint2 pixel_coords = make_uint2(
+            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + tile_pixel_x,
+            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + tile_pixel_y
+        );
+        if (pixel_coords.x >= width || pixel_coords.y >= height) return;
+        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
+
+        // Write color
+        if (output_chw) {
+            const int n_pixels = width * height;
+            image[pixel_idx] = color.x;
+            image[n_pixels + pixel_idx] = color.y;
+            image[2 * n_pixels + pixel_idx] = color.z;
+        } else {
+            const int base_idx = 3 * pixel_idx;
+            image[base_idx] = color.x;
+            image[base_idx + 1] = color.y;
+            image[base_idx + 2] = color.z;
+        }
+    }
 }

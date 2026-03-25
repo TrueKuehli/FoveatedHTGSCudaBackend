@@ -46,9 +46,12 @@ namespace htgs_foveated::rasterization::config {
     DEF int block_size_blur = 256;
     DEF int block_size_blur_blended = 64;
 
+    // visualization constants
     DEF int gaze_visualization_width = 45;
     DEF int gaze_visualization_size = gaze_visualization_width * gaze_visualization_width;
     DEF bool gaze_visualization_circular = true;
+    DEF int num_border_pixels_small = tile_width_small * 2 + tile_height_small * 2 - 4;
+    DEF int num_border_pixels_large = tile_width_large * 2 + tile_height_large * 2 - 4;
 }
 
 namespace config = htgs_foveated::rasterization::config;
