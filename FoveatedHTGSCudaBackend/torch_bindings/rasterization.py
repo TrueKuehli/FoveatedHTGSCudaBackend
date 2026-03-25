@@ -18,8 +18,8 @@ class RasterizerSettings(NamedTuple):
     VPR_inv: torch.Tensor  # homogeneous transformation from screen space to model/world space, ignoring translation
     cam_position: torch.Tensor  # camera position in world space
     gaze_position: torch.Tensor  # gaze position in screen space
-    render_mask: torch.Tensor  # precomputed mask for culling invisible tiles
-    render_mask_area_table: torch.Tensor  # precomputed table for culling invisible tiles
+    visibility_mask: torch.Tensor  # precomputed mask for culling invisible tiles
+    visibility_mask_area_table: torch.Tensor  # precomputed table for culling invisible tiles
     fovea_mask_area_table: torch.Tensor  # precomputed table for the shape of the sharp foveated area
     background_model_data: torch.Tensor  # background model specific data
     background_model: BackgroundModel
@@ -42,8 +42,8 @@ class RasterizerSettings(NamedTuple):
             self.VPR_inv,
             self.cam_position,
             self.gaze_position,
-            self.render_mask,
-            self.render_mask_area_table,
+            self.visibility_mask,
+            self.visibility_mask_area_table,
             self.fovea_mask_area_table,
             self.background_model_data,
             self.background_model.value,
