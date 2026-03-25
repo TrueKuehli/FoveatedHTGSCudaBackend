@@ -13,7 +13,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
         const uint width,
         const uint height,
         const uint grid_width,
-        const uint2 gaze_position_tiles,
+        const float2 gaze_position_tiles,
         const bool output_chw
     ) {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
@@ -213,7 +213,6 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
         const uint width,
         const uint height,
         const uint grid_width,
-        const uint2 gaze_position_tiles,
         const bool output_chw
     ) {
         // Fused bilinear interpolation + gaussian blur kernel; with output blended with existing pixels (for blended tiles)

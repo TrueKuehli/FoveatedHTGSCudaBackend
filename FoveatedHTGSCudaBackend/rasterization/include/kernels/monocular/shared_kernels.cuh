@@ -15,7 +15,7 @@ namespace htgs_foveated::rasterization::kernels::monocular::shared {
         const uint4* primitive_screen_bounds,
         KeyT* instance_keys,
         uint* instance_primitive_indices,
-        const int2 gaze_position_tiles,
+        const float2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives)
     {
@@ -55,7 +55,7 @@ namespace htgs_foveated::rasterization::kernels::monocular::shared {
         const float* primitive_depths,
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
-        const int2 gaze_position_tiles,
+        const float2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives)
     {
@@ -103,7 +103,7 @@ namespace htgs_foveated::rasterization::kernels::monocular::shared {
     template <int foveation_radius_tiles, int num_small_tiles>
     __global__ inline void fill_tile_index_num_tiles(
         uint* tile_index_map_num_tiles,
-        const uint2 gaze_position_tiles,
+        const float2 gaze_position_tiles,
         const uint num_tiles_total,
         const uint grid_width
     ) {
@@ -131,7 +131,7 @@ namespace htgs_foveated::rasterization::kernels::monocular::shared {
         TileType* tile_type_map,
         const uint* tile_index_map_num_tiles,
         const uint* tile_index_map_offsets,
-        const uint2 gaze_position_tiles,
+        const float2 gaze_position_tiles,
         const uint grid_width,
         const uint num_tiles_total
     ) {

@@ -228,7 +228,7 @@ __device__ inline bool transform_and_cull_aaa(
     const uint tile_width,
     const uint tile_height,
     const uint foveation_radius_tiles,
-    const uint2 gaze_position,
+    const int2 gaze_position,
     const float width,
     const float height,
     const float focal_x,
@@ -318,8 +318,8 @@ __device__ inline bool transform_and_cull_aaa(
     // TODO: Template foveation radius
     const int foveation_diameter_tiles = 2 * foveation_radius_tiles;
     const int2 mask_top_left = make_int2(
-        static_cast<int>(gaze_position.x) - foveation_radius_tiles,
-        static_cast<int>(gaze_position.y) - foveation_radius_tiles
+        gaze_position.x - foveation_radius_tiles,
+        gaze_position.y - foveation_radius_tiles
     );
     const uint4 foveation_table_bounds = make_uint4(
         min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.x) - mask_top_left.x)), // x_min

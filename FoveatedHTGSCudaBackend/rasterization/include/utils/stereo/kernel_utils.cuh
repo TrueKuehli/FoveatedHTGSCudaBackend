@@ -77,14 +77,14 @@ template <uint radius>
 __forceinline__ __device__ bool is_in_fovea(
     const uint tile_idx,
     const uint grid_width,
-    const uint2 gaze_position_tiles)
+    const float2 gaze_position_tiles)
 {
     constexpr float radius_sq = static_cast<float>(radius * radius);
     const float2 tile_coords = make_float2(
-        tile_idx % grid_width + 0.5,
-        tile_idx / grid_width + 0.5
+        tile_idx % grid_width + 0.5f,
+        tile_idx / grid_width + 0.5f
     );
-    const float2 to_gaze = tile_coords - make_float2(gaze_position_tiles.x, gaze_position_tiles.y);
+    const float2 to_gaze = tile_coords - gaze_position_tiles;
     const float squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
     return squared_distance_to_gaze < radius_sq;
@@ -95,10 +95,10 @@ template <uint radius>
 __forceinline__ __device__ bool is_in_fovea(
     const int2 tile_coords,
     const uint grid_width,
-    const int2 gaze_position_tiles)
+    const float2 gaze_position_tiles)
 {
     constexpr float radius_sq = static_cast<float>(radius * radius);
-    const float2 to_gaze = make_float2(tile_coords.x + 0.5f, tile_coords.y + 0.5f) - make_float2(gaze_position_tiles.x, gaze_position_tiles.y);
+    const float2 to_gaze = make_float2(tile_coords.x + 0.5f, tile_coords.y + 0.5f) - gaze_position_tiles;
     const float squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
     return squared_distance_to_gaze < radius_sq;
@@ -144,7 +144,7 @@ __forceinline__ __device__ bool transform_and_cull(
     const uint tile_width,
     const uint tile_height,
     const uint foveation_radius_tiles,
-    const uint2 gaze_position,
+    const int2 gaze_position,
     const float near_plane,
     const float far_plane,
     const float min_alpha_threshold_rcp,
@@ -199,8 +199,8 @@ __forceinline__ __device__ bool transform_and_cull(
 
     const int foveation_diameter_tiles = 2 * foveation_radius_tiles;
     const int2 mask_top_left = make_int2(
-        static_cast<int>(gaze_position.x) - foveation_radius_tiles,
-        static_cast<int>(gaze_position.y) - foveation_radius_tiles
+        gaze_position.x - foveation_radius_tiles,
+        gaze_position.y - foveation_radius_tiles
     );
     const uint4 foveation_table_bounds = make_uint4(
         min(foveation_diameter_tiles, max(0, static_cast<int>(screen_bounds.x) - mask_top_left.x)), // x_min

@@ -117,13 +117,21 @@ void htgs_foveated::rasterization::inference_stereo(
     cudaMemcpyToSymbol(c_render_mask, masks_right.render_mask, div_round_up(grid_right_large.x * grid_right_large.y, 8U), sizeof(c_render_mask[0]), cudaMemcpyDeviceToDevice);
 
     // Round gaze to nearest large tile (top left corner of tile)
-    const uint2 gaze_position_left_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid_left.x - 1), (static_cast<int>(gaze_position_clamped_left.x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid_left.y - 1), (static_cast<int>(gaze_position_clamped_left.y) + config::tile_width_large / 2) / config::tile_width_large)))
+    const int2 gaze_position_left_tiles_int = make_int2(
+        max(0, min(static_cast<int>(grid_left.x - 1), (static_cast<int>(gaze_position_clamped_left.x) + config::tile_width_large / 2) / config::tile_width_large)),
+        max(0, min(static_cast<int>(grid_left.y - 1), (static_cast<int>(gaze_position_clamped_left.y) + config::tile_width_large / 2) / config::tile_width_large))
     );
-    const uint2 gaze_position_right_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid_right.x - 1), (static_cast<int>(gaze_position_clamped_right.x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid_right.y - 1), (static_cast<int>(gaze_position_clamped_right.y) + config::tile_height_large / 2) / config::tile_height_large)))
+    const int2 gaze_position_right_tiles_int = make_int2(
+        max(0, min(static_cast<int>(grid_right.x - 1), (static_cast<int>(gaze_position_clamped_right.x) + config::tile_width_large / 2) / config::tile_width_large)),
+        max(0, min(static_cast<int>(grid_right.y - 1), (static_cast<int>(gaze_position_clamped_right.y) + config::tile_height_large / 2) / config::tile_height_large))
+    );
+    const float2 gaze_position_left_tiles = make_float2(
+        static_cast<float>(gaze_position_left_tiles_int.x),
+        static_cast<float>(gaze_position_left_tiles_int.y)
+    );
+    const float2 gaze_position_right_tiles = make_float2(
+        static_cast<float>(gaze_position_right_tiles.x),
+        static_cast<float>(gaze_position_right_tiles.y)
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
@@ -330,7 +338,7 @@ void htgs_foveated::rasterization::inference_stereo(
         grid_left_large.y,
         active_sh_bases,
         total_sh_bases,
-        gaze_position_left_tiles,
+        gaze_position_left_tiles_int,
         static_cast<float>(intrinsics_left.width),
         static_cast<float>(intrinsics_left.height),
         intrinsics_left.focal_x,
@@ -363,7 +371,7 @@ void htgs_foveated::rasterization::inference_stereo(
         grid_right_large.y,
         active_sh_bases,
         total_sh_bases,
-        gaze_position_right_tiles,
+        gaze_position_right_tiles_int,
         static_cast<float>(intrinsics_right.width),
         static_cast<float>(intrinsics_right.height),
         intrinsics_right.focal_x,
@@ -426,7 +434,7 @@ void htgs_foveated::rasterization::inference_stereo(
         per_primitive_buffers_left.screen_bounds,
         per_instance_buffers_left.keys.Current(),
         per_instance_buffers_left.primitive_indices.Current(),
-        make_int2(gaze_position_left_tiles.x, gaze_position_left_tiles.y),
+        gaze_position_left_tiles,
         grid_left_large.x,
         n_primitives
     );
@@ -437,7 +445,7 @@ void htgs_foveated::rasterization::inference_stereo(
         per_primitive_buffers_right.screen_bounds,
         per_instance_buffers_right.keys.Current(),
         per_instance_buffers_right.primitive_indices.Current(),
-        make_int2(gaze_position_right_tiles.x, gaze_position_right_tiles.y),
+        gaze_position_right_tiles,
         grid_right_large.x,
         n_primitives
     );
@@ -552,7 +560,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_left.rgba,
             background_model.data,
             image_left,
-            gaze_position_left_tiles,
             partition_ranges_cpu_left.fovea_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
@@ -574,7 +581,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_right.rgba,
             background_model.data,
             image_right,
-            gaze_position_right_tiles,
             partition_ranges_cpu_right.fovea_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
@@ -596,7 +602,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_left.rgba,
             background_model.data,
             image_left,
-            gaze_position_left_tiles,
             partition_ranges_cpu_left.blended_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
@@ -618,7 +623,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_right.rgba,
             background_model.data,
             image_right,
-            gaze_position_right_tiles,
             partition_ranges_cpu_right.blended_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
@@ -640,7 +644,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_left.rgba,
             background_model.data,
             image_left,
-            gaze_position_left_tiles,
             partition_ranges_cpu_left.periphery_tiles_range.x,
             intrinsics_left.width,
             intrinsics_left.height,
@@ -662,7 +665,6 @@ void htgs_foveated::rasterization::inference_stereo(
             per_primitive_buffers_right.rgba,
             background_model.data,
             image_right,
-            gaze_position_right_tiles,
             partition_ranges_cpu_right.periphery_tiles_range.x,
             intrinsics_right.width,
             intrinsics_right.height,
@@ -723,7 +725,6 @@ void htgs_foveated::rasterization::inference_stereo(
                 intrinsics_left.width,
                 intrinsics_left.height,
                 grid_left_large.x,
-                gaze_position_left_tiles,
                 to_chw
             );            
             CHECK_CUDA(config::debug_inference, "blur_blended (left)")
@@ -740,7 +741,6 @@ void htgs_foveated::rasterization::inference_stereo(
                 intrinsics_right.width,
                 intrinsics_right.height,
                 grid_right_large.x,
-                gaze_position_right_tiles,
                 to_chw
             );            
             CHECK_CUDA(config::debug_inference, "blur_blended (right)")

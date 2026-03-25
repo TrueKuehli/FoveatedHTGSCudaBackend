@@ -112,9 +112,13 @@ void htgs_foveated::rasterization::inference(
     cudaMemcpyToSymbol(c_render_mask, render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
 
     // Round gaze to nearest large tile (top left corner of tile)
-    const uint2 gaze_position_tiles = make_uint2(
-        static_cast<uint>(max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position_clamped.x) + config::tile_width_large / 2) / config::tile_width_large))),
-        static_cast<uint>(max(0, min(static_cast<int>(grid.y - 1), (static_cast<int>(gaze_position_clamped.y) + config::tile_width_large / 2) / config::tile_width_large)))
+    const int2 gaze_position_tiles_int = make_int2(
+        max(0, min(static_cast<int>(grid.x - 1), (static_cast<int>(gaze_position_clamped.x) + config::tile_width_large / 2) / config::tile_width_large)),
+        max(0, min(static_cast<int>(grid.y - 1), (static_cast<int>(gaze_position_clamped.y) + config::tile_width_large / 2) / config::tile_width_large))
+    );
+    const float2 gaze_position_tiles = make_float2(
+        static_cast<float>(gaze_position_tiles_int.x),
+        static_cast<float>(gaze_position_tiles_int.y)
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
@@ -225,7 +229,7 @@ void htgs_foveated::rasterization::inference(
         grid_large.y,
         active_sh_bases,
         total_sh_bases,
-        gaze_position_tiles,
+        gaze_position_tiles_int,
         static_cast<float>(width),
         static_cast<float>(height),
         focal_x,
@@ -275,7 +279,7 @@ void htgs_foveated::rasterization::inference(
             per_primitive_buffers.screen_bounds,
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
-            make_int2(gaze_position_tiles.x, gaze_position_tiles.y),
+            gaze_position_tiles,
             grid_large.x,
             n_primitives
         );
@@ -329,7 +333,6 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.rgba,
                 background_model_data,
                 image,
-                gaze_position_tiles,
                 partition_ranges_cpu.blended_tiles_range.x,
                 width,
                 height,
@@ -350,7 +353,6 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.rgba,
                 background_model_data,
                 image,
-                gaze_position_tiles,
                 partition_ranges_cpu.periphery_tiles_range.x,
                 width,
                 height,
@@ -371,7 +373,6 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.rgba,
                 background_model_data,
                 blur_periphery ? image_final : image,
-                gaze_position_tiles,
                 partition_ranges_cpu.fovea_tiles_range.x,
                 width,
                 height,
@@ -414,7 +415,6 @@ void htgs_foveated::rasterization::inference(
                     width,
                     height,
                     grid_large.x,
-                    gaze_position_tiles,
                     to_chw
                 );
                 CHECK_CUDA(config::debug_inference, "blur_blended")
