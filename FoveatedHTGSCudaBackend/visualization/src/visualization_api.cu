@@ -1,6 +1,7 @@
 #include "visualization_api.h"
 #include "visualization.h"
 
+#include "enums.h"
 #include "helper_math.h"
 #include "utils/torch_utils.h"
 #include <functional>
@@ -12,6 +13,9 @@
 torch::Tensor htgs_foveated::visualization::visualize_gaze_wrapper(
     const torch::Tensor& image,
     const torch::Tensor& gaze_position,
+    const torch::Tensor& gaze_color,
+    const uint8_t visualization_type,
+    const int visualization_size,
     const bool to_chw
 ) {
     const int width = image.size(to_chw ? 2 : 1);
@@ -20,7 +24,10 @@ torch::Tensor htgs_foveated::visualization::visualize_gaze_wrapper(
         image.data_ptr<float>(),
         width,
         height,
+        visualization_size,
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
+        *reinterpret_cast<const float3*>(gaze_color.contiguous().data_ptr<float>()),
+        static_cast<GazeVisualizationType>(visualization_type),
         to_chw
     );
 

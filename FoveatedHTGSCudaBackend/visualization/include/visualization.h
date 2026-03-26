@@ -1,12 +1,18 @@
 #pragma once
 
+
+#include "enums.h"
+
 namespace htgs_foveated::visualization {
 
     void visualize_gaze_position(
         float* image,
         const int width,
         const int height,
+        const int visualization_size,
         const float2* gaze_position,
+        const float3 gaze_color,
+        const GazeVisualizationType visualization_type,
         const bool to_chw);
 
    void visualize_tile_boundaries(

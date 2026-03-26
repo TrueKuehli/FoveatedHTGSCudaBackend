@@ -1,4 +1,5 @@
 #include "config.h"
+#include "enums.h"
 #include "helper_math.h"
 #include "utils/monocular/kernel_utils.cuh"
 #include "visualization_config.h"
@@ -7,20 +8,26 @@
 
 namespace htgs_foveated::visualization::kernels {
 
-    __global__ void __launch_bounds__(visualization::config::gaze_visualization_size) visualize_gaze(
+    __global__ void __launch_bounds__(rasterization::config::block_size_blend) visualize_gaze(
         float* image,
         const uint width,
         const uint height,
+        const float3 gaze_color,
+        const float visualization_size,
+        const GazeVisualizationType visualization_type,
         const bool output_chw
     ) {
         const dim3 group_index = cooperative_groups::this_thread_block().group_index();
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const dim3 thread_index = block.thread_index();
-        const int x_off = group_index.x * rasterization::config::tile_width_small + thread_index.x - visualization::config::gaze_visualization_width / 2;
-        const int y_off = group_index.y * rasterization::config::tile_width_small + thread_index.y - visualization::config::gaze_visualization_width / 2;
+        const int x_off = group_index.x * rasterization::config::tile_width_small + thread_index.x - visualization_size / 2;
+        const int y_off = group_index.y * rasterization::config::tile_width_small + thread_index.y - visualization_size / 2;
+        if (x_off > visualization_size / 2 || y_off > visualization_size / 2) return;
 
-        if constexpr (visualization::config::gaze_visualization_circular) {
-            if (x_off * x_off + y_off * y_off > (visualization::config::gaze_visualization_width / 2) * (visualization::config::gaze_visualization_width / 2)) return;
+        if (visualization_type == GazeVisualizationType::CIRCLE) {
+            if (x_off * x_off + y_off * y_off > (visualization_size / 2) * (visualization_size / 2)) return;
+        } else if (visualization_type == GazeVisualizationType::CROSS) {
+            if (abs(x_off) > 1 && abs(y_off) > 1) return;
         }
 
         const int x = static_cast<int>(c_gaze_position_cuda.x) + x_off;
@@ -30,14 +37,14 @@ namespace htgs_foveated::visualization::kernels {
         const int pixel_idx = width * y + x;
         if (output_chw) {
             const int n_pixels = width * height;
-            image[pixel_idx] = 1.0f;
-            image[n_pixels + pixel_idx] = 0.0f;
-            image[2 * n_pixels + pixel_idx] = 0.0f;
+            image[pixel_idx] = gaze_color.x;
+            image[n_pixels + pixel_idx] = gaze_color.y;
+            image[2 * n_pixels + pixel_idx] = gaze_color.z;
         } else {
             const int base_idx = 3 * pixel_idx;
-            image[base_idx] = 1.0f;
-            image[base_idx + 1] = 0.0f;
-            image[base_idx + 2] = 0.0f;
+            image[base_idx] = gaze_color.x;
+            image[base_idx + 1] = gaze_color.y;
+            image[base_idx + 2] = gaze_color.z;
         }
     }
 

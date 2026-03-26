@@ -4,6 +4,7 @@
 #include "kernels/visualization.cuh"
 #include "utils/monocular/buffer_utils.h"
 #include "utils/enums.h"
+#include "enums.h"
 #include "utils.h"
 #include "visualization.h"
 #include "visualization_config.h"
@@ -20,25 +21,32 @@ void htgs_foveated::visualization::visualize_gaze_position(
     float* image,
     const int width,
     const int height,
+    const int visualization_size,
     const float2* gaze_position,
+    const float3 gaze_color,
+    const GazeVisualizationType visualization_type,
     const bool to_chw
 ) {
-    const float2 gaze_position_clamped = make_float2(
-        clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
-        clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
-    );
-    cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
-    // cudaMemset(image, 0, sizeof(float) * width * height * 3);  // TODO: Optional argument: clear image before rendering gaze position
+    // If gaze_position is null, assume we've already written it e.g. during rasterization to the respective constant memory location
+    if (gaze_position != nullptr) {
+        const float2 gaze_position_clamped = make_float2(
+            clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
+            clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
+        );
+        cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
+    }
 
-    // TODO: Make size & color arguments
-    // Draw a red dot at the gaze position for visualization
-    const dim3 dot_grid(div_round_up(visualization::config::gaze_visualization_width, rasterization::config::tile_width_small),
-                        div_round_up(visualization::config::gaze_visualization_width, rasterization::config::tile_width_small), 1);
+    // Draw a dot at the gaze position for visualization
+    const dim3 dot_grid(div_round_up(visualization_size, rasterization::config::tile_width_small),
+                        div_round_up(visualization_size, rasterization::config::tile_width_small), 1);
     const dim3 dot_block(rasterization::config::tile_width_small, rasterization::config::tile_width_small, 1);
     kernels::visualize_gaze<<<dot_grid, dot_block>>>(
         image,
         width,
         height,
+        gaze_color,
+        visualization_size,
+        visualization_type,
         to_chw
     );
 }

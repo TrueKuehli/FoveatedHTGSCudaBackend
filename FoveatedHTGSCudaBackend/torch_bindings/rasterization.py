@@ -12,6 +12,12 @@ class BackgroundModel(Enum):
     TEXTURE = 2
 
 
+class GazeVisualizationType(Enum):
+    CIRCLE = 0
+    SQUARE = 1
+    CROSS = 2
+
+
 class RasterizerSettings(NamedTuple):
     M: torch.Tensor  # affine transformation from model/world space to camera/view space
     VPM: torch.Tensor  # homogeneous transformation from model/world space to screen space
@@ -153,11 +159,17 @@ class FoveatedHTGSVisualizer(torch.nn.Module):
             self,
             image: torch.Tensor,
             gaze_position: torch.Tensor,
+            gaze_color: torch.Tensor,
+            visualization_size: int,
+            visualization_type: GazeVisualizationType,
             to_chw: bool,
     ) -> torch.Tensor:
         image = _C_visualization.visualize_gaze(
             image,
             gaze_position,
+            gaze_color,
+            visualization_type.value,
+            visualization_size,
             to_chw,
         )
         return image
