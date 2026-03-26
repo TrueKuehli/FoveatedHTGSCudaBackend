@@ -37,14 +37,4 @@ namespace htgs_foveated::rasterization {
         const bool blur_periphery,
         const bool anti_aliasing);
 
-    torch::Tensor visualize_gaze_wrapper(
-        const torch::Tensor& image,
-        const torch::Tensor& gaze_position,
-        const bool to_chw);
-
-    torch::Tensor visualize_tile_boundaries_wrapper(
-        const torch::Tensor& image,
-        const torch::Tensor& render_mask,
-        const torch::Tensor& gaze_position,
-        const bool to_chw);
 }

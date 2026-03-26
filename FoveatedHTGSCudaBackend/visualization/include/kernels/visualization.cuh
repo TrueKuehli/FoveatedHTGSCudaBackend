@@ -1,12 +1,13 @@
 #include "config.h"
 #include "helper_math.h"
 #include "utils/monocular/kernel_utils.cuh"
+#include "visualization_config.h"
 #include <cooperative_groups.h>
 
 
-namespace htgs_foveated::rasterization::kernels::visualization {
+namespace htgs_foveated::visualization::kernels {
 
-    __global__ void __launch_bounds__(config::gaze_visualization_size) visualize_gaze(
+    __global__ void __launch_bounds__(visualization::config::gaze_visualization_size) visualize_gaze(
         float* image,
         const uint width,
         const uint height,
@@ -15,11 +16,11 @@ namespace htgs_foveated::rasterization::kernels::visualization {
         const dim3 group_index = cooperative_groups::this_thread_block().group_index();
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const dim3 thread_index = block.thread_index();
-        const int x_off = group_index.x * config::tile_width_small + thread_index.x - config::gaze_visualization_width / 2;
-        const int y_off = group_index.y * config::tile_width_small + thread_index.y - config::gaze_visualization_width / 2;
+        const int x_off = group_index.x * rasterization::config::tile_width_small + thread_index.x - visualization::config::gaze_visualization_width / 2;
+        const int y_off = group_index.y * rasterization::config::tile_width_small + thread_index.y - visualization::config::gaze_visualization_width / 2;
 
-        if constexpr (config::gaze_visualization_circular) {
-            if (x_off * x_off + y_off * y_off > (config::gaze_visualization_width / 2) * (config::gaze_visualization_width / 2)) return;
+        if constexpr (visualization::config::gaze_visualization_circular) {
+            if (x_off * x_off + y_off * y_off > (visualization::config::gaze_visualization_width / 2) * (visualization::config::gaze_visualization_width / 2)) return;
         }
 
         const int x = static_cast<int>(c_gaze_position_cuda.x) + x_off;
@@ -40,7 +41,7 @@ namespace htgs_foveated::rasterization::kernels::visualization {
         }
     }
 
-    __global__ void __launch_bounds__(config::num_border_pixels_large) visualize_tile_boundaries_cu(
+    __global__ void __launch_bounds__(visualization::config::num_border_pixels_large) visualize_tile_boundaries_cu(
         float* image,
         const float3 color,
         const uint* tile_index_map,
@@ -55,10 +56,10 @@ namespace htgs_foveated::rasterization::kernels::visualization {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
-        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
-        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
+        const uint large_tile_index = true_group_index / rasterization::config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % rasterization::config::num_small_tiles_per_large_tile;
         const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
-        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_x, 0);
+        const dim3 subtile_index_2d(subtile_index % rasterization::config::tile_stride_x, subtile_index / rasterization::config::tile_stride_x, 0);
         const int thread_index = block.thread_index().x;
 
         // Map linear thread index to tile border pixel coordinates
@@ -81,8 +82,8 @@ namespace htgs_foveated::rasterization::kernels::visualization {
             tile_pixel_y = thread_index - (2 * tile_width + tile_height - 2) + 1;
         }
         const uint2 pixel_coords = make_uint2(
-            large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + tile_pixel_x,
-            large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + tile_pixel_y
+            large_tile_index_2d.x * rasterization::config::tile_width_large + subtile_index_2d.x * rasterization::config::tile_width_small + tile_pixel_x,
+            large_tile_index_2d.y * rasterization::config::tile_height_large + subtile_index_2d.y * rasterization::config::tile_height_small + tile_pixel_y
         );
         if (pixel_coords.x >= width || pixel_coords.y >= height) return;
         const int pixel_idx = width * pixel_coords.y + pixel_coords.x;

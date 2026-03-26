@@ -11,7 +11,10 @@ __install_command__ = [
 ]
 
 try:
-    from .FoveatedHTGSCudaBackend.torch_bindings.rasterization import FoveatedHTGSRasterizer, RasterizerSettings
-    __all__ = ['FoveatedHTGSRasterizer', 'RasterizerSettings']
+    from .FoveatedHTGSCudaBackend.torch_bindings.rasterization import (
+            FoveatedHTGSRasterizer,
+            FoveatedHTGSVisualizer,
+            RasterizerSettings)
+    __all__ = ['FoveatedHTGSRasterizer', 'FoveatedHTGSVisualizer', 'RasterizerSettings']
 except ImportError as e:
     raise Framework.ExtensionError(name=__extension_name__, install_command=__install_command__)

@@ -4,7 +4,7 @@ from pathlib import Path
 from setuptools import setup
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 
-__author__ = 'Florian Hahlbohm'
+__author__ = 'Timon Scholz & Florian Hahlbohm'
 __description__ = 'Provides various CUDA-accelerated functionality for the foveated HTGS method.'
 
 ENABLE_NVCC_LINEINFO = True  # set to True for profiling kernels with Nsight Compute (overhead is minimal)
@@ -26,12 +26,16 @@ fast_inference_sources = [
     str(extension_root / 'rasterization' / 'src' / 'inference.cu'),
 ]
 stereo_sources = [str(extension_root / 'torch_bindings' / 'bindings_stereo.cpp')]
+visualization_sources = [str(extension_root / 'torch_bindings' / 'bindings_visualization.cpp')]
 for src in all_sources:
     if 'stereo' in src:
         stereo_sources.append(src)
     elif 'monocular' in src:
-        fast_inference_sources.append(src)
         base_sources.append(src)
+        fast_inference_sources.append(src)
+        visualization_sources.append(src)
+    elif 'visualization' in src:
+        visualization_sources.append(src)
     elif 'fast_inference' in src:
         fast_inference_sources.append(src)
     elif 'inference' in src:
@@ -40,6 +44,7 @@ for src in all_sources:
         base_sources.append(src)
         fast_inference_sources.append(src)
         stereo_sources.append(src)
+        visualization_sources.append(src)
 
 include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
@@ -82,11 +87,21 @@ stereo_extension = CUDAExtension(
     }
 )
 
+visualization_extension = CUDAExtension(
+    name=f'{extension_name}._C_visualization',
+    sources=visualization_sources,
+    include_dirs=include_dirs,
+    extra_compile_args={
+        'cxx': cxx_flags + benchmark_cxx_flags,
+        'nvcc': nvcc_flags + benchmark_nvcc_flags
+    }
+)
+
 setup(
     name=extension_name,
     author=__author__,
     packages=[extension_name],
-    ext_modules=[base_extension, fast_inference_extension, stereo_extension],
+    ext_modules=[base_extension, fast_inference_extension, stereo_extension, visualization_extension],
     description=__description__,
     cmdclass={'build_ext': BuildExtension}
 )

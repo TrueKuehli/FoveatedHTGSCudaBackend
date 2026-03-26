@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 import torch
 
-from FoveatedHTGSCudaBackend import _C, _C_benchmarking, _C_stereo
+from FoveatedHTGSCudaBackend import _C, _C_benchmarking, _C_stereo, _C_visualization
 
 
 class BackgroundModel(Enum):
@@ -62,9 +62,6 @@ class RasterizerSettings(NamedTuple):
 
 
 class FoveatedHTGSRasterizer(torch.nn.Module):
-
-    def __init__(self):
-        super().__init__()
 
     def render(
             self,
@@ -149,13 +146,16 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
         )
         return image_left, image_right
 
+
+class FoveatedHTGSVisualizer(torch.nn.Module):
+
     def visualize_gaze(
             self,
             image: torch.Tensor,
             gaze_position: torch.Tensor,
             to_chw: bool,
     ) -> torch.Tensor:
-        image = _C.visualize_gaze(
+        image = _C_visualization.visualize_gaze(
             image,
             gaze_position,
             to_chw,
@@ -169,7 +169,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             gaze_position: torch.Tensor,
             to_chw: bool,
     ) -> torch.Tensor:
-        image = _C.visualize_tile_boundaries(
+        image = _C_visualization.visualize_tile_boundaries(
             image,
             visibility_mask,
             gaze_position,
