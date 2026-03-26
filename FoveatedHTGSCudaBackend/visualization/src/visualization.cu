@@ -15,7 +15,14 @@
 #include <type_traits>
 
 
-// TODO: Optimize
+void htgs_foveated::visualization::clear_image(
+    float* image,
+    const int width,
+    const int height
+) {
+    cudaMemset(image, 0, sizeof(float) * width * height * 3);
+}
+
 
 void htgs_foveated::visualization::visualize_gaze_position(
     float* image,

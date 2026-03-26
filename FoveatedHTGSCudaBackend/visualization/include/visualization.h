@@ -5,6 +5,11 @@
 
 namespace htgs_foveated::visualization {
 
+    void clear_image(
+        float* image,
+        const int width,
+        const int height);
+
     void visualize_gaze_position(
         float* image,
         const int width,
