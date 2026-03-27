@@ -2,9 +2,9 @@
 #include "helper_math.h"
 #include "inference.h"
 #include "utils.h"
-#include "kernels/monocular/inference.cuh"
-#include "kernels/monocular/interpolation.cuh"
-#include "kernels/monocular/shared_kernels.cuh"
+#include "kernels/inference.cuh"
+#include "kernels/interpolation.cuh"
+#include "kernels/shared_kernels.cuh"
 #include "utils/buffer_utils.h"
 #include "utils/rasterization_utils.h"
 #include <cub/cub.cuh>
@@ -22,12 +22,12 @@ void blend_k_templated_background_model(
     const int K,
     Args&&... kernel_args)
 {
-    if (K >= 32) htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<32, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 16) htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<16, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 8) htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<8, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 4) htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<4, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 2) htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<2, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else htgs_foveated::rasterization::kernels::monocular::inference::blend_cu<1, is_lowres_tile, background_model><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    if (K >= 32) htgs_foveated::rasterization::kernels::inference::blend_cu<32, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 16) htgs_foveated::rasterization::kernels::inference::blend_cu<16, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 8) htgs_foveated::rasterization::kernels::inference::blend_cu<8, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 4) htgs_foveated::rasterization::kernels::inference::blend_cu<4, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 2) htgs_foveated::rasterization::kernels::inference::blend_cu<2, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else htgs_foveated::rasterization::kernels::inference::blend_cu<1, is_lowres_tile, background_model, 0><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
 }
 
 template <bool is_lowres_tile, typename... Args>
@@ -146,8 +146,8 @@ void htgs_foveated::rasterization::inference(
     }
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
-    kernels::monocular::shared::fill_tile_index_num_tiles
-            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile>
+    kernels::shared::fill_tile_index_num_tiles
+            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0>
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
@@ -162,7 +162,7 @@ void htgs_foveated::rasterization::inference(
         n_tiles_large
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map)")
-    kernels::monocular::shared::build_tile_index_map
+    kernels::shared::build_tile_index_map
             <config::num_small_tiles_per_large_tile, config::blend_radius_tiles>
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
@@ -189,7 +189,7 @@ void htgs_foveated::rasterization::inference(
     );
     CHECK_CUDA(config::debug_inference, "Sort tiles by type")
     if constexpr (!config::debug_inference) cudaStreamSynchronize(memset_stream);
-    kernels::monocular::shared::get_partition_ranges_cu
+    kernels::shared::get_partition_ranges_cu
             <<<div_round_up(static_cast<int>(num_active_tiles), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges>>>
     (
         reinterpret_cast<uint2*>(per_sub_tile_buffers.partition_ranges),
@@ -205,8 +205,8 @@ void htgs_foveated::rasterization::inference(
     const int num_tiles_blended = partition_ranges_cpu.blended_tiles_range.y - partition_ranges_cpu.blended_tiles_range.x;
 
     const auto preprocess = anti_aliasing ?
-        kernels::monocular::inference::preprocess_cu<true> :
-        kernels::monocular::inference::preprocess_cu<false>;
+        kernels::inference::preprocess_cu<true, 0> :
+        kernels::inference::preprocess_cu<false, 0>;
     preprocess<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess>>>(
         positions,
         scales,
@@ -272,7 +272,7 @@ void htgs_foveated::rasterization::inference(
         // compute-sanitizer will complain if the following isn't also executed
         // cudaMemset(per_instance_buffers.primitive_indices.Current(), 255, sizeof(uint) * n_instances);
 
-        kernels::monocular::shared::create_instances_cu<KeyT, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
+        kernels::shared::create_instances_cu<KeyT, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
             per_primitive_buffers.n_touched_tiles,
             per_primitive_buffers.offset,
             per_primitive_buffers.screen_bounds,
@@ -296,7 +296,7 @@ void htgs_foveated::rasterization::inference(
         CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs")
 
         if (n_instances > 0) {
-            kernels::monocular::shared::extract_instance_ranges_cu<KeyT><<<div_round_up(n_instances, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges>>>(
+            kernels::shared::extract_instance_ranges_cu<KeyT><<<div_round_up(n_instances, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges>>>(
                 per_instance_buffers.keys.Current(),
                 per_sub_tile_buffers.instance_ranges,
                 n_instances
@@ -392,7 +392,7 @@ void htgs_foveated::rasterization::inference(
             blend_grid_blur_blended.z = config::tile_stride_y;
 
             if (num_tiles_periphery > 0) {
-                kernels::monocular::interpolation::interpolate_and_blur<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
+                kernels::interpolation::interpolate_and_blur<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
@@ -406,7 +406,7 @@ void htgs_foveated::rasterization::inference(
             }
 
             if (num_tiles_blended > 0) {
-                kernels::monocular::interpolation::interpolate_and_blur_blended<<<blend_grid_blur_blended, half_block, 0, blend_blended_tiles_stream>>>(
+                kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended, half_block, 0, blend_blended_tiles_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,

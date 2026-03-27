@@ -1,6 +1,6 @@
 #include "config.h"
 #include "helper_math.h"
-#include "kernels/monocular/shared_kernels.cuh"
+#include "kernels/shared_kernels.cuh"
 #include "kernels/visualization.cuh"
 #include "utils/buffer_utils.h"
 #include "utils/enums.h"
@@ -34,14 +34,12 @@ void htgs_foveated::visualization::visualize_gaze_position(
     const GazeVisualizationType visualization_type,
     const bool to_chw
 ) {
-    // If gaze_position is null, assume we've already written it e.g. during rasterization to the respective constant memory location
-    if (gaze_position != nullptr) {
-        const float2 gaze_position_clamped = make_float2(
-            clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
-            clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
-        );
-        cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
-    }
+    // Note: Assumes monocular case, for stereo, call twice with different gaze positions
+    const float2 gaze_position_clamped = make_float2(
+        clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
+        clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
+    );
+    cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
 
     // Draw a dot at the gaze position for visualization
     const dim3 dot_grid(div_round_up(visualization_size, rasterization::config::tile_width_small),
@@ -111,8 +109,8 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
     else cudaMemset(per_sub_tile_buffers.partition_ranges, 0, sizeof(rasterization::PartitionRanges));
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
-    htgs_foveated::rasterization::kernels::monocular::shared::fill_tile_index_num_tiles
-            <rasterization::config::foveation_radius_tiles, rasterization::config::num_small_tiles_per_large_tile>
+    htgs_foveated::rasterization::kernels::shared::fill_tile_index_num_tiles
+            <rasterization::config::foveation_radius_tiles, rasterization::config::num_small_tiles_per_large_tile, 0>
             <<<div_round_up(n_tiles_large, rasterization::config::block_size_create_tile_index_map),
                             rasterization::config::block_size_create_tile_index_map>>>
     (
@@ -128,7 +126,7 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
         n_tiles_large
     );
     CHECK_CUDA(visualization::config::debug_visualization, "cub::DeviceScan::InclusiveSum (index_map)")
-    htgs_foveated::rasterization::kernels::monocular::shared::build_tile_index_map
+    htgs_foveated::rasterization::kernels::shared::build_tile_index_map
             <rasterization::config::num_small_tiles_per_large_tile, rasterization::config::blend_radius_tiles>
             <<<div_round_up(n_tiles_large, rasterization::config::block_size_create_tile_index_map),
                             rasterization::config::block_size_create_tile_index_map>>>
@@ -156,7 +154,7 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
     CHECK_CUDA(visualization::config::debug_visualization, "Sort tiles by type")
 
     if constexpr (!visualization::config::debug_visualization) cudaStreamSynchronize(memset_stream);
-    htgs_foveated::rasterization::kernels::monocular::shared::get_partition_ranges_cu
+    htgs_foveated::rasterization::kernels::shared::get_partition_ranges_cu
             <<<div_round_up(static_cast<int>(num_active_tiles), rasterization::config::block_size_get_partition_ranges),
                             rasterization::config::block_size_get_partition_ranges>>>
     (

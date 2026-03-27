@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/monocular/kernel_utils.cuh"
+#include "utils/kernel_utils.cuh"
 #define __FLT_MAX__ 3.402823466e+38f
 
 
@@ -205,6 +205,7 @@ __device__ inline void compute_aabb_view(
     extent = make_float2((bounds_x.y - bounds_x.x) / 2.0f, (bounds_y.y - bounds_y.x) / 2.0f);
 }
 
+template<uint8_t cam_idx>
 __device__ inline bool transform_and_cull_aaa(
     const float3* scales,
     const float4* rotations,
@@ -244,7 +245,7 @@ __device__ inline bool transform_and_cull_aaa(
     const Mat3x3 R = convert_quaternion_to_rotation_matrix(quaternion);
 
     // compute viewspace z of Gaussian mean
-    const float4 M3 = c_M[2];
+    const float4 M3 = c_M[cam_idx][2];
     const float z = dot(make_float3(M3), position_world) + M3.w;
 
     // anti-aliasing filter
@@ -255,7 +256,7 @@ __device__ inline bool transform_and_cull_aaa(
     const float3 original_variance = original_scale * original_scale;
     const float3 variance = original_variance + filter_variance_view;
     const float3 scale = make_float3(sqrtf(variance.x), sqrtf(variance.y), sqrtf(variance.z));
-    const float3 view_dir_world = normalize(position_world - c_cam_position);
+    const float3 view_dir_world = normalize(position_world - c_cam_position[cam_idx]);
     const float3 view_dir_gauss = make_float3(
         R.r11 * view_dir_world.x + R.r21 * view_dir_world.y + R.r31 * view_dir_world.z,
         R.r12 * view_dir_world.x + R.r22 * view_dir_world.y + R.r32 * view_dir_world.z,
@@ -272,7 +273,7 @@ __device__ inline bool transform_and_cull_aaa(
     const float rho_cutoff = 2.0f * logf(opacity * min_alpha_threshold_rcp);
 
     // check if camera is inside the dilated Gaussian
-    const float3 cam_position_shifted = c_cam_position - position_world;
+    const float3 cam_position_shifted = c_cam_position[cam_idx] - position_world;
     const float3 cam_position_gauss = make_float3(
         R.r11 * cam_position_shifted.x + R.r21 * cam_position_shifted.y + R.r31 * cam_position_shifted.z,
         R.r12 * cam_position_shifted.x + R.r22 * cam_position_shifted.y + R.r32 * cam_position_shifted.z,
@@ -284,10 +285,10 @@ __device__ inline bool transform_and_cull_aaa(
     u = make_float3(R.r11 * scale.x, R.r21 * scale.x, R.r31 * scale.x) * scale_modifier;
     v = make_float3(R.r12 * scale.y, R.r22 * scale.y, R.r32 * scale.y) * scale_modifier;
     w = make_float3(R.r13 * scale.z, R.r23 * scale.z, R.r33 * scale.z) * scale_modifier;
-    const float4 VPM1 = c_VPM[0];
-    const float4 VPM2 = c_VPM[1];
-    const float4 VPM3 = c_VPM[2];
-    const float4 VPM4 = c_VPM[3];
+    const float4 VPM1 = c_VPM[cam_idx][0];
+    const float4 VPM2 = c_VPM[cam_idx][1];
+    const float4 VPM3 = c_VPM[cam_idx][2];
+    const float4 VPM4 = c_VPM[cam_idx][3];
     VPMT1 = make_float4(dot(make_float3(VPM1), u), dot(make_float3(VPM1), v), dot(make_float3(VPM1), w), dot(make_float3(VPM1), position_world) + VPM1.w);
     VPMT2 = make_float4(dot(make_float3(VPM2), u), dot(make_float3(VPM2), v), dot(make_float3(VPM2), w), dot(make_float3(VPM2), position_world) + VPM2.w);
     const float4 VPMT3 = make_float4(dot(make_float3(VPM3), u), dot(make_float3(VPM3), v), dot(make_float3(VPM3), w), dot(make_float3(VPM3), position_world) + VPM3.w);
@@ -298,8 +299,8 @@ __device__ inline bool transform_and_cull_aaa(
     if (max_contribution > rho_cutoff) return true;
 
     // compute bounding box center and extent
-    const float4 M1 = c_M[0];
-    const float4 M2 = c_M[1];
+    const float4 M1 = c_M[cam_idx][0];
+    const float4 M2 = c_M[cam_idx][1];
     const float4 MT1 = make_float4(dot(make_float3(M1), u), dot(make_float3(M1), v), dot(make_float3(M1), w), dot(make_float3(M1), position_world) + M1.w);
     const float4 MT2 = make_float4(dot(make_float3(M2), u), dot(make_float3(M2), v), dot(make_float3(M2), w), dot(make_float3(M2), position_world) + M2.w);
     MT3 = make_float4(dot(make_float3(M3), u), dot(make_float3(M3), v), dot(make_float3(M3), w), z);

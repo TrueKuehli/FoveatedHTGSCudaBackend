@@ -1,7 +1,7 @@
 #include "config.h"
 #include "enums.h"
 #include "helper_math.h"
-#include "utils/monocular/kernel_utils.cuh"
+#include "utils/kernel_utils.cuh"
 #include "visualization_config.h"
 #include <cooperative_groups.h>
 
@@ -30,8 +30,9 @@ namespace htgs_foveated::visualization::kernels {
             if (abs(x_off) > 1 && abs(y_off) > 1) return;
         }
 
-        const int x = static_cast<int>(c_gaze_position_cuda.x) + x_off;
-        const int y = static_cast<int>(c_gaze_position_cuda.y) + y_off;
+        // Hard-coded to monocular case
+        const int x = static_cast<int>(c_gaze_position_cuda[0].x) + x_off;
+        const int y = static_cast<int>(c_gaze_position_cuda[0].y) + y_off;
         if (x < 0 || x >= width || y < 0 || y >= height) return;
 
         const int pixel_idx = width * y + x;

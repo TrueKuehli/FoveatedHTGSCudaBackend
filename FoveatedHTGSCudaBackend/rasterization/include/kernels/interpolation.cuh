@@ -2,11 +2,11 @@
 
 #include "config.h"
 #include "helper_math.h"
-#include "utils/stereo/kernel_utils.cuh"
+#include "utils/kernel_utils.cuh"
 #include <cooperative_groups.h>
 
 
-namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
+namespace htgs_foveated::rasterization::kernels::interpolation {
 
     __global__ void __launch_bounds__(config::block_size_blur) interpolate_missing(
         float* image,

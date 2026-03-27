@@ -2,9 +2,9 @@
 #include "helper_math.h"
 #include "inference_stereo.h"
 #include "utils.h"
-#include "kernels/stereo/inference.cuh"
-#include "kernels/stereo/interpolation.cuh"
-#include "kernels/stereo/shared_kernels.cuh"
+#include "kernels/inference.cuh"
+#include "kernels/interpolation.cuh"
+#include "kernels/shared_kernels.cuh"
 #include "utils/buffer_utils.h"
 #include "utils/rasterization_utils.h"
 #include <cub/cub.cuh>
@@ -22,12 +22,12 @@ void blend_k_templated_background_model(
     const int K,
     Args&&... kernel_args)
 {
-    if (K >= 32) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<32, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 16) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<16, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 8) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<8, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 4) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<4, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 2) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<2, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<1, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    if (K >= 32) htgs_foveated::rasterization::kernels::inference::blend_cu<32, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 16) htgs_foveated::rasterization::kernels::inference::blend_cu<16, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 8) htgs_foveated::rasterization::kernels::inference::blend_cu<8, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 4) htgs_foveated::rasterization::kernels::inference::blend_cu<4, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 2) htgs_foveated::rasterization::kernels::inference::blend_cu<2, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else htgs_foveated::rasterization::kernels::inference::blend_cu<1, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
 }
 
 template <bool is_lowres_tile, uint8_t cam_idx, typename... Args>
@@ -183,7 +183,7 @@ void htgs_foveated::rasterization::inference_stereo(
     }
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
-    kernels::stereo::shared::fill_tile_index_num_tiles
+    kernels::shared::fill_tile_index_num_tiles
             <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0>
             <<<div_round_up(n_tiles_large_left, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_left_stream>>>
     (
@@ -193,7 +193,7 @@ void htgs_foveated::rasterization::inference_stereo(
         grid_left_large.x
     );
     CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles left")
-    kernels::stereo::shared::fill_tile_index_num_tiles
+    kernels::shared::fill_tile_index_num_tiles
             <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 1>
             <<<div_round_up(n_tiles_large_right, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_right_stream>>>
     (
@@ -219,7 +219,7 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (index_map) right")
 
-    kernels::stereo::shared::build_tile_index_map
+    kernels::shared::build_tile_index_map
             <config::num_small_tiles_per_large_tile, config::blend_radius_tiles>
             <<<div_round_up(n_tiles_large_left, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_left_stream>>>
     (
@@ -232,7 +232,7 @@ void htgs_foveated::rasterization::inference_stereo(
         n_tiles_large_left
     );
     CHECK_CUDA(config::debug_inference, "build_tile_index_map left")
-    kernels::stereo::shared::build_tile_index_map
+    kernels::shared::build_tile_index_map
             <config::num_small_tiles_per_large_tile, config::blend_radius_tiles>
             <<<div_round_up(n_tiles_large_right, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_right_stream>>>
     (
@@ -277,7 +277,7 @@ void htgs_foveated::rasterization::inference_stereo(
         cudaStreamSynchronize(memset_left_stream);
         cudaStreamSynchronize(memset_right_stream);
     }
-    kernels::stereo::shared::get_partition_ranges_cu
+    kernels::shared::get_partition_ranges_cu
             <<<div_round_up(static_cast<int>(num_active_tiles_left), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges, 0, preprocess_left_stream>>>
     (
         reinterpret_cast<uint2*>(per_sub_tile_buffers_left.partition_ranges),
@@ -285,7 +285,7 @@ void htgs_foveated::rasterization::inference_stereo(
         num_active_tiles_left
     );
     CHECK_CUDA(config::debug_inference, "Partition tiles by type (left)")
-    kernels::stereo::shared::get_partition_ranges_cu
+    kernels::shared::get_partition_ranges_cu
             <<<div_round_up(static_cast<int>(num_active_tiles_right), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges, 0, preprocess_right_stream>>>
     (
         reinterpret_cast<uint2*>(per_sub_tile_buffers_right.partition_ranges),
@@ -312,11 +312,11 @@ void htgs_foveated::rasterization::inference_stereo(
     const int num_tiles_blended_right = partition_ranges_cpu_right.blended_tiles_range.y - partition_ranges_cpu_right.blended_tiles_range.x;
 
     const auto preprocess_left = anti_aliasing ?
-        kernels::stereo::inference::preprocess_cu<true, 0> :
-        kernels::stereo::inference::preprocess_cu<false, 0>;
+        kernels::inference::preprocess_cu<true, 0> :
+        kernels::inference::preprocess_cu<false, 0>;
     const auto preprocess_right = anti_aliasing ?
-        kernels::stereo::inference::preprocess_cu<true, 1> :
-        kernels::stereo::inference::preprocess_cu<false, 1>;
+        kernels::inference::preprocess_cu<true, 1> :
+        kernels::inference::preprocess_cu<false, 1>;
     preprocess_left<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess, 0, preprocess_left_stream>>>(
         positions,
         scales,
@@ -445,7 +445,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 cudaMemset(per_instance_buffers_right.keys.Current(), 255, sizeof(KeyT_right) * n_instances_right);
             }
 
-            kernels::stereo::shared::create_instances_cu<KeyT_left, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_left_stream>>>(
+            kernels::shared::create_instances_cu<KeyT_left, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_left_stream>>>(
                 per_primitive_buffers_left.n_touched_tiles,
                 per_primitive_buffers_left.offset,
                 per_primitive_buffers_left.screen_bounds,
@@ -456,7 +456,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 n_primitives
             );
             CHECK_CUDA(config::debug_inference, "create_instances (left)")
-            kernels::stereo::shared::create_instances_cu<KeyT_right, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 1><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_right_stream>>>(
+            kernels::shared::create_instances_cu<KeyT_right, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 1><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_right_stream>>>(
                 per_primitive_buffers_right.n_touched_tiles,
                 per_primitive_buffers_right.offset,
                 per_primitive_buffers_right.screen_bounds,
@@ -490,7 +490,7 @@ void htgs_foveated::rasterization::inference_stereo(
             CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (right)")
 
             if (n_instances_left > 0) {
-                kernels::stereo::shared::extract_instance_ranges_cu<KeyT_left><<<div_round_up(n_instances_left, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_left_stream>>>(
+                kernels::shared::extract_instance_ranges_cu<KeyT_left><<<div_round_up(n_instances_left, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_left_stream>>>(
                     per_instance_buffers_left.keys.Current(),
                     per_sub_tile_buffers_left.instance_ranges,
                     n_instances_left
@@ -498,7 +498,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 CHECK_CUDA(config::debug_inference, "extract_instance_ranges (left)")
             }
             if (n_instances_right > 0) {
-                kernels::stereo::shared::extract_instance_ranges_cu<KeyT_right><<<div_round_up(n_instances_right, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_right_stream>>>(
+                kernels::shared::extract_instance_ranges_cu<KeyT_right><<<div_round_up(n_instances_right, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_right_stream>>>(
                     per_instance_buffers_right.keys.Current(),
                     per_sub_tile_buffers_right.instance_ranges,
                     n_instances_right
@@ -709,7 +709,7 @@ void htgs_foveated::rasterization::inference_stereo(
                                 if (num_tiles_periphery_left > 0) {
                     // Wait for blended tiles blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0][1], 0);
-                    kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
+                    kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
                         image_left_final,
                         image_left,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
@@ -724,7 +724,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 if (num_tiles_periphery_right > 0) {
                     // Wait for blended tiles blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1][1], 0);
-                    kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
+                    kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
                         image_right_final,
                         image_right,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,
@@ -740,7 +740,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     // Wait for fovea + periphery blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][0], 0);
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][2], 0);
-                    kernels::stereo::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
+                    kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
                         image_left_final,
                         image_left,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
@@ -756,7 +756,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     // Wait for fovea + periphery blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][0], 0);
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][2], 0);
-                    kernels::stereo::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
+                    kernels::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
                         image_right_final,
                         image_right,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,

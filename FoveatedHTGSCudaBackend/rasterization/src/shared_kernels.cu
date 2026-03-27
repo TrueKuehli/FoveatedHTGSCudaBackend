@@ -1,10 +1,10 @@
 #include "helper_math.h"
-#include "kernels/stereo/shared_kernels.cuh"
-#include "utils/stereo/kernel_utils.cuh"
+#include "kernels/shared_kernels.cuh"
+#include "utils/kernel_utils.cuh"
 #include <cstdint>
 
 
-namespace htgs_foveated::rasterization::kernels::stereo::shared {
+namespace htgs_foveated::rasterization::kernels::shared {
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(
         const KeyT* instance_keys,

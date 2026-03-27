@@ -2,11 +2,11 @@
 
 #include "helper_math.h"
 #include "utils/enums.h"
-#include "utils/stereo/kernel_utils.cuh"
+#include "utils/kernel_utils.cuh"
 #include <cstdint>
 
 
-namespace htgs_foveated::rasterization::kernels::stereo::shared {
+namespace htgs_foveated::rasterization::kernels::shared {
 
     template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles, uint8_t cam_idx>
     __global__ inline void create_instances_cu(
