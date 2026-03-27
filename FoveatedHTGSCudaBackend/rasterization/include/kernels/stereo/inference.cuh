@@ -11,7 +11,7 @@
 
 namespace htgs_foveated::rasterization::kernels::stereo::inference {
 
-    template<bool aaa_mode, bool second_camera>
+    template<bool aaa_mode, uint8_t cam_idx>
     __global__ void preprocess_cu(
         const float3* positions,
         const float3* scales,
@@ -59,7 +59,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::inference {
         // transform and cull
         if constexpr (aaa_mode) {
             // improved transform and cull
-            const bool culled = transform_and_cull_aaa<second_camera>(
+            const bool culled = transform_and_cull_aaa<cam_idx>(
                 scales, rotations, position_world,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, MT3, opacity,
                 render_mask_area_table, fovea_mask_area_table,
@@ -72,9 +72,9 @@ namespace htgs_foveated::rasterization::kernels::stereo::inference {
             if (culled) return;
         }
         else {
-            const float4 M3 = c_M[second_camera][2];
+            const float4 M3 = c_M[cam_idx][2];
             float z;
-            if (transform_and_cull<second_camera>(
+            if (transform_and_cull<cam_idx>(
                 scales, rotations, position_world, M3,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
                 render_mask_area_table, fovea_mask_area_table,
@@ -94,7 +94,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::inference {
         primitive_MT3[primitive_idx] = MT3;
 
         // compute view-dependent color
-        const float3 rgb = convert_sh_to_rgb<false, second_camera>(
+        const float3 rgb = convert_sh_to_rgb<false, cam_idx>(
             sh_0,
             sh_rest,
             nullptr,
@@ -107,7 +107,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::inference {
         primitive_rgba[primitive_idx] = make_float4(rgb, opacity);
     }
 
-    template <int K, bool is_lowres_tile, BackgroundModelType background_model, bool second_camera>
+    template <int K, bool is_lowres_tile, BackgroundModelType background_model, uint8_t cam_idx>
     __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint* tile_index_map,
         const uint2* tile_instance_ranges,
@@ -243,12 +243,12 @@ namespace htgs_foveated::rasterization::kernels::stereo::inference {
             if constexpr (background_model == BackgroundModelType::SH) {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * eval_sh_background_model<second_camera>(pixel_x, pixel_y);
+                    rgb_pixel += weight_background * eval_sh_background_model<cam_idx>(pixel_x, pixel_y);
                 }
             } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height, second_camera>(
+                    rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height, cam_idx>(
                         pixel_x, pixel_y, background_model_data
                     );
                 }

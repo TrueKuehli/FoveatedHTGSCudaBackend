@@ -64,8 +64,8 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
 
         const bool to_chw,
         const bool blur_periphery,
-        const bool anti_aliasing
-) {
+        const bool anti_aliasing)
+{
     // Pack pose and intrinsics for left and right eye
     const Pose pose_left = {
         reinterpret_cast<const float4*>(M_left.contiguous().data_ptr<float>()),
@@ -184,8 +184,7 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         scale_modifier_left,
         to_chw,
         blur_periphery,
-        anti_aliasing
-    );
+        anti_aliasing);
 
     return {image_left, image_right};
 }

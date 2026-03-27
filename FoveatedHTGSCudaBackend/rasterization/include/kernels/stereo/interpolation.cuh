@@ -204,7 +204,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
     }
 
 
-    template<bool second_camera>
+    template<uint8_t cam_idx>
     __global__ void __launch_bounds__(config::block_size_blur_blended) interpolate_and_blur_blended(
         float* image_blurred,
         const float* image,
@@ -219,7 +219,6 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
         // Because the workload differs based on the subpixel (in each 2x2 group of pixels) differs,
         //   we launch four blocks (differentiated by y/z block index) per tile, each responsible
         //   for one of the subpixels
-        // TODO: Compare the performance with 4 (templated) separate kernels
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
@@ -237,7 +236,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::interpolation {
         const int pixel_idx = width * pixel_y + pixel_x;
 
         // Determine blending factor
-        const float2 dist_from_gaze = c_gaze_position_cuda[second_camera] - make_float2(pixel_x, pixel_y);
+        const float2 dist_from_gaze = c_gaze_position_cuda[cam_idx] - make_float2(pixel_x, pixel_y);
         const float blend_factor = clamp(
                 (length(dist_from_gaze) - config::blend_radius - 1.5f * config::tile_width_large)
                 / (config::blend_width - 1.5f * config::tile_width_large),

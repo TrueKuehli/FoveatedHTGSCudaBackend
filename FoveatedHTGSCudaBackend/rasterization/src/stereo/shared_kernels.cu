@@ -60,12 +60,14 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
     ) {
         const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (tile_idx >= n_tiles) return;
-        if (tile_idx == 0) return;  // All values are memset to 0 anyway
+        if (tile_idx == 0) return;
 
-        if (tile_type_map[tile_idx] != tile_type_map[tile_idx - 1]) {
-            partition_ranges[tile_idx].x = tile_idx;
-            partition_ranges[tile_idx - 1].y = tile_idx;
+        TileType current_type = tile_type_map[tile_idx];
+        TileType previous_type = tile_type_map[tile_idx - 1];
+        if (tile_idx != 0 && current_type != previous_type) {
+            partition_ranges[static_cast<uint8_t>(current_type)].x = tile_idx;
+            partition_ranges[static_cast<uint8_t>(previous_type)].y = tile_idx;
         }
-        if (tile_idx == n_tiles - 1) partition_ranges[tile_idx].y = n_tiles;
+        if (tile_idx == n_tiles - 1) partition_ranges[static_cast<uint8_t>(current_type)].y = n_tiles;
     }
 }

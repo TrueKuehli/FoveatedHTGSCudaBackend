@@ -5,7 +5,7 @@
 #include "kernels/stereo/inference.cuh"
 #include "kernels/stereo/interpolation.cuh"
 #include "kernels/stereo/shared_kernels.cuh"
-#include "utils/stereo/buffer_utils.h"
+#include "utils/buffer_utils.h"
 #include "utils/rasterization_utils.h"
 #include <cub/cub.cuh>
 #include <functional>
@@ -14,7 +14,7 @@
 #include <type_traits>
 
 
-template <bool is_lowres_tile, BackgroundModelType background_model, bool second_camera, typename... Args>
+template <bool is_lowres_tile, BackgroundModelType background_model, uint8_t cam_idx, typename... Args>
 void blend_k_templated_background_model(
     const dim3& grid,
     const dim3& block,
@@ -22,15 +22,15 @@ void blend_k_templated_background_model(
     const int K,
     Args&&... kernel_args)
 {
-    if (K >= 32) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<32, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 16) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<16, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 8) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<8, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 4) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<4, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else if (K >= 2) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<2, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
-    else htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<1, is_lowres_tile, background_model, second_camera><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    if (K >= 32) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<32, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 16) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<16, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 8) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<8, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 4) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<4, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else if (K >= 2) htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<2, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
+    else htgs_foveated::rasterization::kernels::stereo::inference::blend_cu<1, is_lowres_tile, background_model, cam_idx><<<grid, block, 0, stream>>>(std::forward<Args>(kernel_args)...);
 }
 
-template <bool is_lowres_tile, bool second_camera, typename... Args>
+template <bool is_lowres_tile, uint8_t cam_idx, typename... Args>
 void blend_k_templated(
     const dim3& grid,
     const dim3& block,
@@ -39,9 +39,9 @@ void blend_k_templated(
     const BackgroundModelType background_model,
     Args&&... kernel_args)
 {
-    if (background_model == BackgroundModelType::SH) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::SH, second_camera>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
-    else if (background_model == BackgroundModelType::TEXTURE) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::TEXTURE, second_camera>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
-    else blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::NONE, second_camera>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
+    if (background_model == BackgroundModelType::SH) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::SH, cam_idx>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
+    else if (background_model == BackgroundModelType::TEXTURE) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::TEXTURE, cam_idx>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
+    else blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::NONE, cam_idx>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
 }
 
 
@@ -184,7 +184,7 @@ void htgs_foveated::rasterization::inference_stereo(
 
     // Build tile index map (so we only need to process [0, num_active_tiles), which we can map back to the "true" tile index)
     kernels::stereo::shared::fill_tile_index_num_tiles
-            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, false>
+            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0>
             <<<div_round_up(n_tiles_large_left, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_left_stream>>>
     (
         per_tile_buffers_left.tile_index_map_num_tiles,
@@ -194,7 +194,7 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "fill_tile_index_num_tiles left")
     kernels::stereo::shared::fill_tile_index_num_tiles
-            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, false>
+            <config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 1>
             <<<div_round_up(n_tiles_large_right, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_right_stream>>>
     (
         per_tile_buffers_right.tile_index_map_num_tiles,
@@ -312,11 +312,11 @@ void htgs_foveated::rasterization::inference_stereo(
     const int num_tiles_blended_right = partition_ranges_cpu_right.blended_tiles_range.y - partition_ranges_cpu_right.blended_tiles_range.x;
 
     const auto preprocess_left = anti_aliasing ?
-        kernels::stereo::inference::preprocess_cu<true, false> :
-        kernels::stereo::inference::preprocess_cu<false, false>;
+        kernels::stereo::inference::preprocess_cu<true, 0> :
+        kernels::stereo::inference::preprocess_cu<false, 0>;
     const auto preprocess_right = anti_aliasing ?
-        kernels::stereo::inference::preprocess_cu<true, true> :
-        kernels::stereo::inference::preprocess_cu<false, true>;
+        kernels::stereo::inference::preprocess_cu<true, 1> :
+        kernels::stereo::inference::preprocess_cu<false, 1>;
     preprocess_left<<<div_round_up(n_primitives, config::block_size_preprocess), config::block_size_preprocess, 0, preprocess_left_stream>>>(
         positions,
         scales,

@@ -8,7 +8,7 @@
 
 namespace htgs_foveated::rasterization::kernels::stereo::shared {
 
-    template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles, bool second_camera>
+    template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles, uint8_t cam_idx>
     __global__ inline void create_instances_cu(
         const uint* primitive_n_touched_tiles,
         const uint* primitive_offsets,
@@ -28,7 +28,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
                 const KeyT tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
-                if ((c_render_mask[second_camera][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+                if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea<foveation_radius_tiles>(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles)) {
                     // Tile is in fovea, so create instances for each small tile
@@ -47,7 +47,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
         }
     }
 
-    template <uint foveation_radius_tiles, uint num_small_tiles, bool second_camera>
+    template <uint foveation_radius_tiles, uint num_small_tiles, uint8_t cam_idx>
     __global__ inline void create_instances_cu(
         const uint* primitive_n_touched_tiles,
         const uint* primitive_offsets,
@@ -69,7 +69,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
                 const uint64_t tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
-                if ((c_render_mask[second_camera][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+                if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea<foveation_radius_tiles>(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles)) {
                     // Tile is in fovea, so create instances for each small tile
@@ -100,7 +100,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
         const uint n_instances);
 
 
-    template <int foveation_radius_tiles, int num_small_tiles, bool second_camera>
+    template <int foveation_radius_tiles, int num_small_tiles, uint8_t cam_idx>
     __global__ inline void fill_tile_index_num_tiles(
         uint* tile_index_map_num_tiles,
         const float2 gaze_position_tiles,
@@ -113,7 +113,7 @@ namespace htgs_foveated::rasterization::kernels::stereo::shared {
         const uint mask_byte_idx = tile_idx / 32;
         const uint mask_bit_idx = tile_idx % 32;
 
-        if ((c_render_mask[second_camera][mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
+        if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
             if (is_in_fovea<foveation_radius_tiles>(tile_idx, grid_width, gaze_position_tiles)) {
                 // Tiles in the fovea get split into n small tiles
                 tile_index_map_num_tiles[tile_idx] = num_small_tiles;
