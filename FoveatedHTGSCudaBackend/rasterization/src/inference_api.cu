@@ -40,8 +40,8 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
     const float scale_modifier,
     const bool to_chw,
     const bool blur_periphery,
-    const bool anti_aliasing
-) {
+    const bool anti_aliasing)
+{
     const BackgroundModelType background_model = static_cast<BackgroundModelType>(background_model_type);
     const int n_primitives = positions.size(0);
     const int total_sh_bases = sh_rest.size(1);
@@ -100,8 +100,7 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
         scale_modifier,
         to_chw,
         blur_periphery,
-        anti_aliasing
-    );
+        anti_aliasing);
 
     return image;
 }

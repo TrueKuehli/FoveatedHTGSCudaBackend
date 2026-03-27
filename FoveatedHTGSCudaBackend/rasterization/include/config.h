@@ -26,6 +26,7 @@ namespace htgs_foveated::rasterization::config {
     DEF int tile_stride_y = tile_height_large / tile_height_small;
     DEF int num_small_tiles_per_large_tile = tile_stride_x * tile_stride_y;
 
+    // foveation constants
     DEF int foveation_radius = 375; // in pixels
     DEF int foveation_radius_tiles = (foveation_radius + tile_width_large - 1) / tile_width_large; // in tiles, rounded up
     DEF int blend_width = 125; // in pixels
@@ -33,6 +34,7 @@ namespace htgs_foveated::rasterization::config {
     DEF int blend_radius_tiles = blend_radius_raw / tile_width_large; // in tiles, rounded down
     DEF int blend_radius = blend_radius_tiles * tile_width_large; // in pixels
 
+    // environment map constants
     DEF int environment_map_width = 2000;
     DEF int environment_map_height = 1000;
 

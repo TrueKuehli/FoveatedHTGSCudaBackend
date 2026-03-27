@@ -218,7 +218,6 @@ namespace htgs_foveated::rasterization::kernels::monocular::interpolation {
         // Because the workload differs based on the subpixel (in each 2x2 group of pixels) differs,
         //   we launch four blocks (differentiated by y/z block index) per tile, each responsible
         //   for one of the subpixels
-        // TODO: Compare the performance with 4 (templated) separate kernels
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];
@@ -326,46 +325,6 @@ namespace htgs_foveated::rasterization::kernels::monocular::interpolation {
                 image_blurred[base_idx + 1] = center_rgb.y;
                 image_blurred[base_idx + 2] = center_rgb.z;
             }
-        }
-    }
-
-    __global__ void __launch_bounds__(config::block_size_blur) copy_pixels(
-        float* dst,
-        float* src,
-        const uint* tile_index_map,
-        const uint tile_offset,
-        const uint width,
-        const uint height,
-        const uint grid_width,
-        const bool output_chw
-    ) {
-        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
-        const uint group_index = block.group_index().x + tile_offset;
-        const uint true_group_index = tile_index_map[group_index];
-        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
-        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
-        const dim3 thread_index = block.thread_index();
-        const uint pixel_offset_x = block.group_index().y % config::tile_stride_x;
-        const uint pixel_offset_y = block.group_index().y / config::tile_stride_x;
-
-        const uint2 pixel_coords = make_uint2(
-            large_tile_index_2d.x * config::tile_width_large + thread_index.x * config::tile_stride_x + pixel_offset_x,
-            large_tile_index_2d.y * config::tile_width_large + thread_index.y * config::tile_stride_y + pixel_offset_y
-        );
-        const bool inside = pixel_coords.x < width && pixel_coords.y < height;
-        if (!inside) return;
-        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-
-        if (output_chw) {
-            const int n_pixels = width * height;
-            dst[pixel_idx] = src[pixel_idx];
-            dst[n_pixels + pixel_idx] = src[n_pixels + pixel_idx];
-            dst[2 * n_pixels + pixel_idx] = src[2 * n_pixels + pixel_idx];
-        } else {
-            const int base_idx = 3 * pixel_idx;
-            dst[base_idx] = src[base_idx];
-            dst[base_idx + 1] = src[base_idx + 1];
-            dst[base_idx + 2] = src[base_idx + 2];
         }
     }
 }

@@ -8,7 +8,7 @@
 
 namespace htgs_foveated::visualization::kernels {
 
-    __global__ void __launch_bounds__(rasterization::config::block_size_blend) visualize_gaze(
+    __global__ void __launch_bounds__(rasterization::config::block_size_blend) visualize_gaze_cu(
         float* image,
         const uint width,
         const uint height,

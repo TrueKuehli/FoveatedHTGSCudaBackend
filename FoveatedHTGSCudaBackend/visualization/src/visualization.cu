@@ -2,7 +2,7 @@
 #include "helper_math.h"
 #include "kernels/monocular/shared_kernels.cuh"
 #include "kernels/visualization.cuh"
-#include "utils/monocular/buffer_utils.h"
+#include "utils/buffer_utils.h"
 #include "utils/enums.h"
 #include "enums.h"
 #include "utils.h"
@@ -47,7 +47,7 @@ void htgs_foveated::visualization::visualize_gaze_position(
     const dim3 dot_grid(div_round_up(visualization_size, rasterization::config::tile_width_small),
                         div_round_up(visualization_size, rasterization::config::tile_width_small), 1);
     const dim3 dot_block(rasterization::config::tile_width_small, rasterization::config::tile_width_small, 1);
-    kernels::visualize_gaze<<<dot_grid, dot_block>>>(
+    kernels::visualize_gaze_cu<<<dot_grid, dot_block>>>(
         image,
         width,
         height,

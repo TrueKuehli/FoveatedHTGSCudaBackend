@@ -21,8 +21,8 @@ __device__ __constant__ float4 c_VPM[4];
 __device__ __constant__ float4 c_VPR_inv[4];
 __device__ __constant__ float3 c_cam_position;
 __device__ __constant__ float2 c_gaze_position_cuda;
-__device__ __constant__ float3 c_background_sh_coeff[16];
 __device__ __constant__ uint32_t c_render_mask[4096];  // Sufficient for ~362x362 tiles (total 131,072 tiles = 32 MP)
+__device__ __constant__ float3 c_background_sh_coeff[16];
 
 struct Mat3x3 {
     float r11, r12, r13;

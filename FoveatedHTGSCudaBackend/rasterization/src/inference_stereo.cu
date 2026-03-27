@@ -414,376 +414,370 @@ void htgs_foveated::rasterization::inference_stereo(
     cudaMemcpy(&n_instances_right, per_primitive_buffers_right.offset + n_primitives - 1, sizeof(int), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch n_instances right")
 
-    char* per_instance_buffers_blob_left = buffers_left.per_instance_buffers_func(required<PerInstanceBuffers>(n_instances_left, end_bit_left));
-    char* per_instance_buffers_blob_right = buffers_right.per_instance_buffers_func(required<PerInstanceBuffers>(n_instances_right, end_bit_right));
-    PerInstanceBuffers per_instance_buffers_left = PerInstanceBuffers::from_blob(per_instance_buffers_blob_left, n_instances_left, end_bit_left);
-    PerInstanceBuffers per_instance_buffers_right = PerInstanceBuffers::from_blob(per_instance_buffers_blob_right, n_instances_right, end_bit_right);
-
-    // Ensure random initialized keys cannot overlap with actual valid keys
-    if constexpr (!config::debug_inference) {
-        cudaMemsetAsync(per_instance_buffers_left.keys.Current(), 255, sizeof(uint) * n_instances_left, preprocess_left_stream);
-        cudaMemsetAsync(per_instance_buffers_right.keys.Current(), 255, sizeof(uint) * n_instances_right, preprocess_right_stream);
+    std::variant<PerInstanceBuffers<ushort>, PerInstanceBuffers<uint>> buffer_variant_left;
+    std::variant<PerInstanceBuffers<ushort>, PerInstanceBuffers<uint>> buffer_variant_right;
+    if (end_bit_left <= 16) {
+        char* per_instance_buffers_blob_left = buffers_left.per_instance_buffers_func(required<PerInstanceBuffers<ushort>>(n_instances_left, end_bit_left));
+        buffer_variant_left = PerInstanceBuffers<ushort>::from_blob(per_instance_buffers_blob_left, n_instances_left, end_bit_left);
     } else {
-        cudaMemset(per_instance_buffers_left.keys.Current(), 255, sizeof(uint) * n_instances_left);
-        cudaMemset(per_instance_buffers_right.keys.Current(), 255, sizeof(uint) * n_instances_right);
+        char* per_instance_buffers_blob_left = buffers_left.per_instance_buffers_func(required<PerInstanceBuffers<uint>>(n_instances_left, end_bit_left));
+        buffer_variant_left = PerInstanceBuffers<uint>::from_blob(per_instance_buffers_blob_left, n_instances_left, end_bit_left);
+    }
+    if (end_bit_right <= 16) {
+        char* per_instance_buffers_blob_right = buffers_right.per_instance_buffers_func(required<PerInstanceBuffers<ushort>>(n_instances_right, end_bit_right));
+        buffer_variant_right = PerInstanceBuffers<ushort>::from_blob(per_instance_buffers_blob_right, n_instances_right, end_bit_right);
+    } else {
+        char* per_instance_buffers_blob_right = buffers_right.per_instance_buffers_func(required<PerInstanceBuffers<uint>>(n_instances_right, end_bit_right));
+        buffer_variant_right = PerInstanceBuffers<uint>::from_blob(per_instance_buffers_blob_right, n_instances_right, end_bit_right);
     }
 
-    kernels::stereo::shared::create_instances_cu<uint, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, false><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_left_stream>>>(
-        per_primitive_buffers_left.n_touched_tiles,
-        per_primitive_buffers_left.offset,
-        per_primitive_buffers_left.screen_bounds,
-        per_instance_buffers_left.keys.Current(),
-        per_instance_buffers_left.primitive_indices.Current(),
-        gaze_position_left_tiles,
-        grid_left_large.x,
-        n_primitives
-    );
-    CHECK_CUDA(config::debug_inference, "create_instances (left)")
-    kernels::stereo::shared::create_instances_cu<uint, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, true><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_right_stream>>>(
-        per_primitive_buffers_right.n_touched_tiles,
-        per_primitive_buffers_right.offset,
-        per_primitive_buffers_right.screen_bounds,
-        per_instance_buffers_right.keys.Current(),
-        per_instance_buffers_right.primitive_indices.Current(),
-        gaze_position_right_tiles,
-        grid_right_large.x,
-        n_primitives
-    );
-    CHECK_CUDA(config::debug_inference, "create_instances (right)")
+    std::visit([&](auto& per_instance_buffers_left) {
+        using KeyT_left = std::remove_reference_t<decltype(*per_instance_buffers_left.keys.Current())>;
+        std::visit([&](auto& per_instance_buffers_right) {
+            using KeyT_right = std::remove_reference_t<decltype(*per_instance_buffers_right.keys.Current())>;
 
-    cub::DeviceRadixSort::SortPairs(
-        per_instance_buffers_left.cub_workspace,
-        per_instance_buffers_left.cub_workspace_size,
-        per_instance_buffers_left.keys,
-        per_instance_buffers_left.primitive_indices,
-        n_instances_left,
-        0, end_bit_left,
-        preprocess_left_stream
-    );
-    CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (left)")
-    cub::DeviceRadixSort::SortPairs(
-        per_instance_buffers_right.cub_workspace,
-        per_instance_buffers_right.cub_workspace_size,
-        per_instance_buffers_right.keys,
-        per_instance_buffers_right.primitive_indices,
-        n_instances_right,
-        0, end_bit_right,
-        preprocess_right_stream
-    );
-    CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (right)")
+            // Ensure random initialized keys cannot overlap with actual valid keys
+            if constexpr (!config::debug_inference) {
+                cudaMemsetAsync(per_instance_buffers_left.keys.Current(), 255, sizeof(KeyT_left) * n_instances_left, preprocess_left_stream);
+                cudaMemsetAsync(per_instance_buffers_right.keys.Current(), 255, sizeof(KeyT_right) * n_instances_right, preprocess_right_stream);
+            } else {
+                cudaMemset(per_instance_buffers_left.keys.Current(), 255, sizeof(KeyT_left) * n_instances_left);
+                cudaMemset(per_instance_buffers_right.keys.Current(), 255, sizeof(KeyT_right) * n_instances_right);
+            }
 
-    if (n_instances_left > 0) {
-        kernels::stereo::shared::extract_instance_ranges_cu<uint><<<div_round_up(n_instances_left, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_left_stream>>>(
-            per_instance_buffers_left.keys.Current(),
-            per_sub_tile_buffers_left.instance_ranges,
-            n_instances_left
-        );
-        CHECK_CUDA(config::debug_inference, "extract_instance_ranges (left)")
-    }
-    if (n_instances_right > 0) {
-        kernels::stereo::shared::extract_instance_ranges_cu<uint><<<div_round_up(n_instances_right, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_right_stream>>>(
-            per_instance_buffers_right.keys.Current(),
-            per_sub_tile_buffers_right.instance_ranges,
-            n_instances_right
-        );
-        CHECK_CUDA(config::debug_inference, "extract_instance_ranges (right)")
-    }
+            kernels::stereo::shared::create_instances_cu<KeyT_left, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_left_stream>>>(
+                per_primitive_buffers_left.n_touched_tiles,
+                per_primitive_buffers_left.offset,
+                per_primitive_buffers_left.screen_bounds,
+                per_instance_buffers_left.keys.Current(),
+                per_instance_buffers_left.primitive_indices.Current(),
+                gaze_position_left_tiles,
+                grid_left_large.x,
+                n_primitives
+            );
+            CHECK_CUDA(config::debug_inference, "create_instances (left)")
+            kernels::stereo::shared::create_instances_cu<KeyT_right, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 1><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances, 0, preprocess_right_stream>>>(
+                per_primitive_buffers_right.n_touched_tiles,
+                per_primitive_buffers_right.offset,
+                per_primitive_buffers_right.screen_bounds,
+                per_instance_buffers_right.keys.Current(),
+                per_instance_buffers_right.primitive_indices.Current(),
+                gaze_position_right_tiles,
+                grid_right_large.x,
+                n_primitives
+            );
+            CHECK_CUDA(config::debug_inference, "create_instances (right)")
 
-    static cudaEvent_t preprocess_left_done = 0;
-    static cudaEvent_t preprocess_right_done = 0;
-    if constexpr (!config::debug_inference) {
-        static bool preprocess_events_initialized = false;
-        if (!preprocess_events_initialized) {
-            cudaEventCreate(&preprocess_left_done);
-            cudaEventCreate(&preprocess_right_done);
-            preprocess_events_initialized = true;
-        }
+            cub::DeviceRadixSort::SortPairs(
+                per_instance_buffers_left.cub_workspace,
+                per_instance_buffers_left.cub_workspace_size,
+                per_instance_buffers_left.keys,
+                per_instance_buffers_left.primitive_indices,
+                n_instances_left,
+                0, end_bit_left,
+                preprocess_left_stream
+            );
+            CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (left)")
+            cub::DeviceRadixSort::SortPairs(
+                per_instance_buffers_right.cub_workspace,
+                per_instance_buffers_right.cub_workspace_size,
+                per_instance_buffers_right.keys,
+                per_instance_buffers_right.primitive_indices,
+                n_instances_right,
+                0, end_bit_right,
+                preprocess_right_stream
+            );
+            CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs (right)")
 
-        cudaEventRecord(preprocess_left_done, preprocess_left_stream);
-        cudaEventRecord(preprocess_right_done, preprocess_right_stream);
-    }
+            if (n_instances_left > 0) {
+                kernels::stereo::shared::extract_instance_ranges_cu<KeyT_left><<<div_round_up(n_instances_left, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_left_stream>>>(
+                    per_instance_buffers_left.keys.Current(),
+                    per_sub_tile_buffers_left.instance_ranges,
+                    n_instances_left
+                );
+                CHECK_CUDA(config::debug_inference, "extract_instance_ranges (left)")
+            }
+            if (n_instances_right > 0) {
+                kernels::stereo::shared::extract_instance_ranges_cu<KeyT_right><<<div_round_up(n_instances_right, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges, 0, preprocess_right_stream>>>(
+                    per_instance_buffers_right.keys.Current(),
+                    per_sub_tile_buffers_right.instance_ranges,
+                    n_instances_right
+                );
+                CHECK_CUDA(config::debug_inference, "extract_instance_ranges (right)")
+            }
 
-    static cudaStream_t blend_fovea_stream_left = 0;
-    static cudaStream_t blend_periphery_stream_left = 0;
-    static cudaStream_t blend_blended_tiles_stream_left = 0;
-    static cudaStream_t blend_fovea_stream_right = 0;
-    static cudaStream_t blend_periphery_stream_right = 0;
-    static cudaStream_t blend_blended_tiles_stream_right = 0;
-    if constexpr (!config::debug_inference) {
-        static bool blend_streams_initialized = false;
-        if (!blend_streams_initialized) {
-            cudaStreamCreate(&blend_fovea_stream_left);
-            cudaStreamCreate(&blend_periphery_stream_left);
-            cudaStreamCreate(&blend_blended_tiles_stream_left);
-            cudaStreamCreate(&blend_fovea_stream_right);
-            cudaStreamCreate(&blend_periphery_stream_right);
-            cudaStreamCreate(&blend_blended_tiles_stream_right);
-            blend_streams_initialized = true;
-        }
+            static cudaEvent_t preprocess_left_done = 0;
+            static cudaEvent_t preprocess_right_done = 0;
+            if constexpr (!config::debug_inference) {
+                static bool preprocess_events_initialized = false;
+                if (!preprocess_events_initialized) {
+                    cudaEventCreate(&preprocess_left_done);
+                    cudaEventCreate(&preprocess_right_done);
+                    preprocess_events_initialized = true;
+                }
 
-        cudaStreamWaitEvent(blend_fovea_stream_left, preprocess_left_done, 0);
-        cudaStreamWaitEvent(blend_periphery_stream_left, preprocess_left_done, 0);
-        cudaStreamWaitEvent(blend_blended_tiles_stream_left, preprocess_left_done, 0);
-        cudaStreamWaitEvent(blend_fovea_stream_right, preprocess_right_done, 0);
-        cudaStreamWaitEvent(blend_periphery_stream_right, preprocess_right_done, 0);
-        cudaStreamWaitEvent(blend_blended_tiles_stream_right, preprocess_right_done, 0);
-    }
+                cudaEventRecord(preprocess_left_done, preprocess_left_stream);
+                cudaEventRecord(preprocess_right_done, preprocess_right_stream);
+            }
 
-    const dim3 blend_grid_fovea_left(num_tiles_fovea_left, 1, 1);
-    const dim3 blend_grid_periphery_left(num_tiles_periphery_left, 1, 1);
-    const dim3 blend_grid_blended_left(num_tiles_blended_left, 1, 1);
-    const dim3 blend_grid_fovea_right(num_tiles_fovea_right, 1, 1);
-    const dim3 blend_grid_periphery_right(num_tiles_periphery_right, 1, 1);
-    const dim3 blend_grid_blended_right(num_tiles_blended_right, 1, 1);
+            static cudaStream_t blend_fovea_stream_left = 0;
+            static cudaStream_t blend_periphery_stream_left = 0;
+            static cudaStream_t blend_blended_tiles_stream_left = 0;
+            static cudaStream_t blend_fovea_stream_right = 0;
+            static cudaStream_t blend_periphery_stream_right = 0;
+            static cudaStream_t blend_blended_tiles_stream_right = 0;
+            if constexpr (!config::debug_inference) {
+                static bool blend_streams_initialized = false;
+                if (!blend_streams_initialized) {
+                    cudaStreamCreate(&blend_fovea_stream_left);
+                    cudaStreamCreate(&blend_periphery_stream_left);
+                    cudaStreamCreate(&blend_blended_tiles_stream_left);
+                    cudaStreamCreate(&blend_fovea_stream_right);
+                    cudaStreamCreate(&blend_periphery_stream_right);
+                    cudaStreamCreate(&blend_blended_tiles_stream_right);
+                    blend_streams_initialized = true;
+                }
 
-    static cudaEvent_t blend_done[2][3] = {{0,0,0},{0,0,0}};
-    if constexpr (!config::debug_inference) {
-        static bool blend_events_initialized = false;
-        if (!blend_events_initialized) {
-            for (int cam = 0; cam < 2; ++cam) {
-                for (int part = 0; part < 3; ++part) {
-                    cudaEventCreate(&blend_done[cam][part]);
+                cudaStreamWaitEvent(blend_fovea_stream_left, preprocess_left_done, 0);
+                cudaStreamWaitEvent(blend_periphery_stream_left, preprocess_left_done, 0);
+                cudaStreamWaitEvent(blend_blended_tiles_stream_left, preprocess_left_done, 0);
+                cudaStreamWaitEvent(blend_fovea_stream_right, preprocess_right_done, 0);
+                cudaStreamWaitEvent(blend_periphery_stream_right, preprocess_right_done, 0);
+                cudaStreamWaitEvent(blend_blended_tiles_stream_right, preprocess_right_done, 0);
+            }
+
+            const dim3 blend_grid_fovea_left(num_tiles_fovea_left, 1, 1);
+            const dim3 blend_grid_periphery_left(num_tiles_periphery_left, 1, 1);
+            const dim3 blend_grid_blended_left(num_tiles_blended_left, 1, 1);
+            const dim3 blend_grid_fovea_right(num_tiles_fovea_right, 1, 1);
+            const dim3 blend_grid_periphery_right(num_tiles_periphery_right, 1, 1);
+            const dim3 blend_grid_blended_right(num_tiles_blended_right, 1, 1);
+
+            static cudaEvent_t blend_done[2][3] = {{0,0,0},{0,0,0}};
+            if constexpr (!config::debug_inference) {
+                static bool blend_events_initialized = false;
+                if (!blend_events_initialized) {
+                    for (int cam = 0; cam < 2; ++cam) {
+                        for (int part = 0; part < 3; ++part) {
+                            cudaEventCreate(&blend_done[cam][part]);
+                        }
+                    }
+                    blend_events_initialized = true;
                 }
             }
-            blend_events_initialized = true;
-        }
-    }
-    if (num_tiles_fovea_left > 0) {
-        blend_k_templated<false, false>(blend_grid_fovea_left, block, blend_fovea_stream_left, K, background_model.type,
-            per_sub_tile_buffers_left.tile_index_map_partitioned,
-            per_sub_tile_buffers_left.instance_ranges,
-            per_instance_buffers_left.primitive_indices.Current(),
-            per_primitive_buffers_left.VPMT1,
-            per_primitive_buffers_left.VPMT2,
-            per_primitive_buffers_left.VPMT4,
-            per_primitive_buffers_left.MT3,
-            per_primitive_buffers_left.rgba,
-            background_model.data,
-            image_left,
-            partition_ranges_cpu_left.fovea_tiles_range.x,
-            intrinsics_left.width,
-            intrinsics_left.height,
-            grid_left_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][0], blend_fovea_stream_left);
-        CHECK_CUDA(config::debug_inference, "blend_fovea (left)")
-    }
-    if (num_tiles_fovea_right > 0) {
-        blend_k_templated<false, true>(blend_grid_fovea_right, block, blend_fovea_stream_right, K, background_model.type,
-            per_sub_tile_buffers_right.tile_index_map_partitioned,
-            per_sub_tile_buffers_right.instance_ranges,
-            per_instance_buffers_right.primitive_indices.Current(),
-            per_primitive_buffers_right.VPMT1,
-            per_primitive_buffers_right.VPMT2,
-            per_primitive_buffers_right.VPMT4,
-            per_primitive_buffers_right.MT3,
-            per_primitive_buffers_right.rgba,
-            background_model.data,
-            image_right,
-            partition_ranges_cpu_right.fovea_tiles_range.x,
-            intrinsics_right.width,
-            intrinsics_right.height,
-            grid_right_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][0], blend_fovea_stream_right);
-        CHECK_CUDA(config::debug_inference, "blend_fovea (right)")
-    }
-    if (num_tiles_blended_left > 0) {
-        blend_k_templated<false, false>(blend_grid_blended_left, block, blend_blended_tiles_stream_left, K, background_model.type,
-            per_sub_tile_buffers_left.tile_index_map_partitioned,
-            per_sub_tile_buffers_left.instance_ranges,
-            per_instance_buffers_left.primitive_indices.Current(),
-            per_primitive_buffers_left.VPMT1,
-            per_primitive_buffers_left.VPMT2,
-            per_primitive_buffers_left.VPMT4,
-            per_primitive_buffers_left.MT3,
-            per_primitive_buffers_left.rgba,
-            background_model.data,
-            image_left,
-            partition_ranges_cpu_left.blended_tiles_range.x,
-            intrinsics_left.width,
-            intrinsics_left.height,
-            grid_left_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][1], blend_blended_tiles_stream_left);
-        CHECK_CUDA(config::debug_inference, "blend_blended_tiles (left)")
-    }
-    if (num_tiles_blended_right > 0) {
-        blend_k_templated<false, true>(blend_grid_blended_right, block, blend_blended_tiles_stream_right, K, background_model.type,
-            per_sub_tile_buffers_right.tile_index_map_partitioned,
-            per_sub_tile_buffers_right.instance_ranges,
-            per_instance_buffers_right.primitive_indices.Current(),
-            per_primitive_buffers_right.VPMT1,
-            per_primitive_buffers_right.VPMT2,
-            per_primitive_buffers_right.VPMT4,
-            per_primitive_buffers_right.MT3,
-            per_primitive_buffers_right.rgba,
-            background_model.data,
-            image_right,
-            partition_ranges_cpu_right.blended_tiles_range.x,
-            intrinsics_right.width,
-            intrinsics_right.height,
-            grid_right_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][1], blend_blended_tiles_stream_right);
-        CHECK_CUDA(config::debug_inference, "blend_blended_tiles (right)")
-    }
-    if (num_tiles_periphery_left > 0) {
-        blend_k_templated<true, false>(blend_grid_periphery_left, block, blend_periphery_stream_left, K, background_model.type,
-            per_sub_tile_buffers_left.tile_index_map_partitioned,
-            per_sub_tile_buffers_left.instance_ranges,
-            per_instance_buffers_left.primitive_indices.Current(),
-            per_primitive_buffers_left.VPMT1,
-            per_primitive_buffers_left.VPMT2,
-            per_primitive_buffers_left.VPMT4,
-            per_primitive_buffers_left.MT3,
-            per_primitive_buffers_left.rgba,
-            background_model.data,
-            image_left,
-            partition_ranges_cpu_left.periphery_tiles_range.x,
-            intrinsics_left.width,
-            intrinsics_left.height,
-            grid_left_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][2], blend_periphery_stream_left);
-        CHECK_CUDA(config::debug_inference, "blend_periphery (left)")
-    }
-    if (num_tiles_periphery_right > 0) {
-        blend_k_templated<true, true>(blend_grid_periphery_right, block, blend_periphery_stream_right, K, background_model.type,
-            per_sub_tile_buffers_right.tile_index_map_partitioned,
-            per_sub_tile_buffers_right.instance_ranges,
-            per_instance_buffers_right.primitive_indices.Current(),
-            per_primitive_buffers_right.VPMT1,
-            per_primitive_buffers_right.VPMT2,
-            per_primitive_buffers_right.VPMT4,
-            per_primitive_buffers_right.MT3,
-            per_primitive_buffers_right.rgba,
-            background_model.data,
-            image_right,
-            partition_ranges_cpu_right.periphery_tiles_range.x,
-            intrinsics_right.width,
-            intrinsics_right.height,
-            grid_right_large.x,
-            to_chw
-        );
-        if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][2], blend_periphery_stream_right);
-        CHECK_CUDA(config::debug_inference, "blend_periphery (right)")
-    }
+            if (num_tiles_blended_left > 0) {
+                blend_k_templated<false, 0>(blend_grid_blended_left, block, blend_blended_tiles_stream_left, K, background_model.type,
+                    per_sub_tile_buffers_left.tile_index_map_partitioned,
+                    per_sub_tile_buffers_left.instance_ranges,
+                    per_instance_buffers_left.primitive_indices.Current(),
+                    per_primitive_buffers_left.VPMT1,
+                    per_primitive_buffers_left.VPMT2,
+                    per_primitive_buffers_left.VPMT4,
+                    per_primitive_buffers_left.MT3,
+                    per_primitive_buffers_left.rgba,
+                    background_model.data,
+                    image_left,
+                    partition_ranges_cpu_left.blended_tiles_range.x,
+                    intrinsics_left.width,
+                    intrinsics_left.height,
+                    grid_left_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][1], blend_blended_tiles_stream_left);
+                CHECK_CUDA(config::debug_inference, "blend_blended_tiles (left)")
+            }
+            if (num_tiles_blended_right > 0) {
+                blend_k_templated<false, 1>(blend_grid_blended_right, block, blend_blended_tiles_stream_right, K, background_model.type,
+                    per_sub_tile_buffers_right.tile_index_map_partitioned,
+                    per_sub_tile_buffers_right.instance_ranges,
+                    per_instance_buffers_right.primitive_indices.Current(),
+                    per_primitive_buffers_right.VPMT1,
+                    per_primitive_buffers_right.VPMT2,
+                    per_primitive_buffers_right.VPMT4,
+                    per_primitive_buffers_right.MT3,
+                    per_primitive_buffers_right.rgba,
+                    background_model.data,
+                    image_right,
+                    partition_ranges_cpu_right.blended_tiles_range.x,
+                    intrinsics_right.width,
+                    intrinsics_right.height,
+                    grid_right_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][1], blend_blended_tiles_stream_right);
+                CHECK_CUDA(config::debug_inference, "blend_blended_tiles (right)")
+            }
+            if (num_tiles_periphery_left > 0) {
+                blend_k_templated<true, 0>(blend_grid_periphery_left, block, blend_periphery_stream_left, K, background_model.type,
+                    per_sub_tile_buffers_left.tile_index_map_partitioned,
+                    per_sub_tile_buffers_left.instance_ranges,
+                    per_instance_buffers_left.primitive_indices.Current(),
+                    per_primitive_buffers_left.VPMT1,
+                    per_primitive_buffers_left.VPMT2,
+                    per_primitive_buffers_left.VPMT4,
+                    per_primitive_buffers_left.MT3,
+                    per_primitive_buffers_left.rgba,
+                    background_model.data,
+                    image_left,
+                    partition_ranges_cpu_left.periphery_tiles_range.x,
+                    intrinsics_left.width,
+                    intrinsics_left.height,
+                    grid_left_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][2], blend_periphery_stream_left);
+                CHECK_CUDA(config::debug_inference, "blend_periphery (left)")
+            }
+            if (num_tiles_periphery_right > 0) {
+                blend_k_templated<true, 1>(blend_grid_periphery_right, block, blend_periphery_stream_right, K, background_model.type,
+                    per_sub_tile_buffers_right.tile_index_map_partitioned,
+                    per_sub_tile_buffers_right.instance_ranges,
+                    per_instance_buffers_right.primitive_indices.Current(),
+                    per_primitive_buffers_right.VPMT1,
+                    per_primitive_buffers_right.VPMT2,
+                    per_primitive_buffers_right.VPMT4,
+                    per_primitive_buffers_right.MT3,
+                    per_primitive_buffers_right.rgba,
+                    background_model.data,
+                    image_right,
+                    partition_ranges_cpu_right.periphery_tiles_range.x,
+                    intrinsics_right.width,
+                    intrinsics_right.height,
+                    grid_right_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][2], blend_periphery_stream_right);
+                CHECK_CUDA(config::debug_inference, "blend_periphery (right)")
+            }
+            if (num_tiles_fovea_left > 0) {
+                blend_k_templated<false, 0>(blend_grid_fovea_left, block, blend_fovea_stream_left, K, background_model.type,
+                    per_sub_tile_buffers_left.tile_index_map_partitioned,
+                    per_sub_tile_buffers_left.instance_ranges,
+                    per_instance_buffers_left.primitive_indices.Current(),
+                    per_primitive_buffers_left.VPMT1,
+                    per_primitive_buffers_left.VPMT2,
+                    per_primitive_buffers_left.VPMT4,
+                    per_primitive_buffers_left.MT3,
+                    per_primitive_buffers_left.rgba,
+                    background_model.data,
+                    image_left_final,
+                    partition_ranges_cpu_left.fovea_tiles_range.x,
+                    intrinsics_left.width,
+                    intrinsics_left.height,
+                    grid_left_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][0], blend_fovea_stream_left);
+                CHECK_CUDA(config::debug_inference, "blend_fovea (left)")
+            }
+            if (num_tiles_fovea_right > 0) {
+                blend_k_templated<false, 1>(blend_grid_fovea_right, block, blend_fovea_stream_right, K, background_model.type,
+                    per_sub_tile_buffers_right.tile_index_map_partitioned,
+                    per_sub_tile_buffers_right.instance_ranges,
+                    per_instance_buffers_right.primitive_indices.Current(),
+                    per_primitive_buffers_right.VPMT1,
+                    per_primitive_buffers_right.VPMT2,
+                    per_primitive_buffers_right.VPMT4,
+                    per_primitive_buffers_right.MT3,
+                    per_primitive_buffers_right.rgba,
+                    background_model.data,
+                    image_right_final,
+                    partition_ranges_cpu_right.fovea_tiles_range.x,
+                    intrinsics_right.width,
+                    intrinsics_right.height,
+                    grid_right_large.x,
+                    to_chw
+                );
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][0], blend_fovea_stream_right);
+                CHECK_CUDA(config::debug_inference, "blend_fovea (right)")
+            }
 
-    if (blur_periphery) {
-        dim3 blend_grid_blur_left = blend_grid_periphery_left;
-        dim3 blend_grid_blur_right = blend_grid_periphery_right;
-        dim3 blend_grid_blur_blended_left = blend_grid_blended_left;
-        dim3 blend_grid_blur_blended_right = blend_grid_blended_right;
-        blend_grid_blur_left.y = config::tile_stride_x;
-        blend_grid_blur_left.z = config::tile_stride_y;
-        blend_grid_blur_right.y = config::tile_stride_x;
-        blend_grid_blur_right.z = config::tile_stride_y;
-        blend_grid_blur_blended_left.y = config::tile_stride_x;
-        blend_grid_blur_blended_left.z = config::tile_stride_y;
-        blend_grid_blur_blended_right.y = config::tile_stride_x;
-        blend_grid_blur_blended_right.z = config::tile_stride_y;
+            if (blur_periphery) {
+                dim3 blend_grid_blur_left = blend_grid_periphery_left;
+                dim3 blend_grid_blur_right = blend_grid_periphery_right;
+                dim3 blend_grid_blur_blended_left = blend_grid_blended_left;
+                dim3 blend_grid_blur_blended_right = blend_grid_blended_right;
+                blend_grid_blur_left.y = config::tile_stride_x;
+                blend_grid_blur_left.z = config::tile_stride_y;
+                blend_grid_blur_right.y = config::tile_stride_x;
+                blend_grid_blur_right.z = config::tile_stride_y;
+                blend_grid_blur_blended_left.y = config::tile_stride_x;
+                blend_grid_blur_blended_left.z = config::tile_stride_y;
+                blend_grid_blur_blended_right.y = config::tile_stride_x;
+                blend_grid_blur_blended_right.z = config::tile_stride_y;
 
-        if (num_tiles_fovea_left > 0) {
-            kernels::stereo::interpolation::copy_pixels<<<blend_grid_fovea_left, block, 0, blend_fovea_stream_left>>>(
-                image_left_final,
-                image_left,
-                per_sub_tile_buffers_left.tile_index_map_partitioned,
-                0,  // offset into partitioned tile index map
-                intrinsics_left.width,
-                intrinsics_left.height,
-                grid_left_large.x,
-                to_chw
-            );
-        }
-        if (num_tiles_fovea_right > 0) {
-            kernels::stereo::interpolation::copy_pixels<<<blend_grid_fovea_right, block, 0, blend_fovea_stream_right>>>(
-                image_right_final,
-                image_right,
-                per_sub_tile_buffers_right.tile_index_map_partitioned,
-                0,  // offset into partitioned tile index map
-                intrinsics_right.width,
-                intrinsics_right.height,
-                grid_right_large.x,
-                to_chw
-            );
-        }
-        if (num_tiles_blended_left > 0) {
-            // Wait for fovea + periphery blending to be done
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][0], 0);
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][2], 0);
-            kernels::stereo::interpolation::interpolate_and_blur_blended<false><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
-                image_left_final,
-                image_left,
-                per_sub_tile_buffers_left.tile_index_map_partitioned,
-                partition_ranges_cpu_left.blended_tiles_range.x,
-                intrinsics_left.width,
-                intrinsics_left.height,
-                grid_left_large.x,
-                to_chw
-            );            
-            CHECK_CUDA(config::debug_inference, "blur_blended (left)")
-        }
-        if (num_tiles_blended_right > 0) {
-            // Wait for fovea + periphery blending to be done
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][0], 0);
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][2], 0);
-            kernels::stereo::interpolation::interpolate_and_blur_blended<true><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
-                image_right_final,
-                image_right,
-                per_sub_tile_buffers_right.tile_index_map_partitioned,
-                partition_ranges_cpu_right.blended_tiles_range.x,
-                intrinsics_right.width,
-                intrinsics_right.height,
-                grid_right_large.x,
-                to_chw
-            );            
-            CHECK_CUDA(config::debug_inference, "blur_blended (right)")
-        }
+                                if (num_tiles_periphery_left > 0) {
+                    // Wait for blended tiles blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0][1], 0);
+                    kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
+                        image_left_final,
+                        image_left,
+                        per_sub_tile_buffers_left.tile_index_map_partitioned,
+                        partition_ranges_cpu_left.periphery_tiles_range.x,
+                        intrinsics_left.width,
+                        intrinsics_left.height,
+                        grid_left_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur (left)")
+                }
+                if (num_tiles_periphery_right > 0) {
+                    // Wait for blended tiles blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1][1], 0);
+                    kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
+                        image_right_final,
+                        image_right,
+                        per_sub_tile_buffers_right.tile_index_map_partitioned,
+                        partition_ranges_cpu_right.periphery_tiles_range.x,
+                        intrinsics_right.width,
+                        intrinsics_right.height,
+                        grid_right_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur (right)")
+                }
+                if (num_tiles_blended_left > 0) {
+                    // Wait for fovea + periphery blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][0], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][2], 0);
+                    kernels::stereo::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
+                        image_left_final,
+                        image_left,
+                        per_sub_tile_buffers_left.tile_index_map_partitioned,
+                        partition_ranges_cpu_left.blended_tiles_range.x,
+                        intrinsics_left.width,
+                        intrinsics_left.height,
+                        grid_left_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur_blended (left)")
+                }
+                if (num_tiles_blended_right > 0) {
+                    // Wait for fovea + periphery blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][0], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][2], 0);
+                    kernels::stereo::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
+                        image_right_final,
+                        image_right,
+                        per_sub_tile_buffers_right.tile_index_map_partitioned,
+                        partition_ranges_cpu_right.blended_tiles_range.x,
+                        intrinsics_right.width,
+                        intrinsics_right.height,
+                        grid_right_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur_blended (right)")
+                }
+            } else {
+                // TODO: Implement non-blur path
+            }
 
-        if (num_tiles_periphery_left > 0) {
-            // Wait for blended tiles blending to be done
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0][1], 0);
-            kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
-                image_left_final,
-                image_left,
-                per_sub_tile_buffers_left.tile_index_map_partitioned,
-                partition_ranges_cpu_left.periphery_tiles_range.x,
-                intrinsics_left.width,
-                intrinsics_left.height,
-                grid_left_large.x,
-                to_chw
-            );
-            CHECK_CUDA(config::debug_inference, "blur (left)")
-        }
-        if (num_tiles_periphery_right > 0) {
-            // Wait for blended tiles blending to be done
-            if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1][1], 0);
-            kernels::stereo::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
-                image_right_final,
-                image_right,
-                per_sub_tile_buffers_right.tile_index_map_partitioned,
-                partition_ranges_cpu_right.periphery_tiles_range.x,
-                intrinsics_right.width,
-                intrinsics_right.height,
-                grid_right_large.x,
-                to_chw
-            );
-            CHECK_CUDA(config::debug_inference, "blur (right)")
-        }
-    } else {
-        // TODO: Implement non-blur path
-    }
-
-    cudaStreamSynchronize(blend_fovea_stream_left);
-    cudaStreamSynchronize(blend_fovea_stream_right);
-    cudaStreamSynchronize(blend_blended_tiles_stream_left);
-    cudaStreamSynchronize(blend_blended_tiles_stream_right);
-    cudaStreamSynchronize(blend_periphery_stream_left);
-    cudaStreamSynchronize(blend_periphery_stream_right);
+            cudaStreamSynchronize(blend_fovea_stream_left);
+            cudaStreamSynchronize(blend_fovea_stream_right);
+            cudaStreamSynchronize(blend_blended_tiles_stream_left);
+            cudaStreamSynchronize(blend_blended_tiles_stream_right);
+            cudaStreamSynchronize(blend_periphery_stream_left);
+            cudaStreamSynchronize(blend_periphery_stream_right);
+        }, buffer_variant_right);
+    }, buffer_variant_left);
 }

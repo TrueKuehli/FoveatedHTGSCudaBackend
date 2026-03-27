@@ -5,7 +5,7 @@
 #include "kernels/monocular/inference.cuh"
 #include "kernels/monocular/interpolation.cuh"
 #include "kernels/monocular/shared_kernels.cuh"
-#include "utils/monocular/buffer_utils.h"
+#include "utils/buffer_utils.h"
 #include "utils/rasterization_utils.h"
 #include <cub/cub.cuh>
 #include <functional>
@@ -371,7 +371,7 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.MT3,
                 per_primitive_buffers.rgba,
                 background_model_data,
-                blur_periphery ? image_final : image,
+                image_final,
                 partition_ranges_cpu.fovea_tiles_range.x,
                 width,
                 height,
