@@ -238,8 +238,8 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         // Determine blending factor
         const float2 dist_from_gaze = c_gaze_position_cuda[cam_idx] - make_float2(pixel_x, pixel_y);
         const float blend_factor = clamp(
-                (length(dist_from_gaze) - config::blend_radius - 1.5f * config::tile_width_large)
-                / (config::blend_width - 1.5f * config::tile_width_large),
+                (length(dist_from_gaze) - config::blend_radius - config::tile_width_large)
+                / (config::blend_width - config::tile_width_large),
                 0.0f, 1.0f
         );
 

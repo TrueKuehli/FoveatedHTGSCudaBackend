@@ -6,42 +6,6 @@
 
 namespace htgs_foveated::rasterization {
 
-    struct Buffers {
-        std::function<char* (size_t)> per_primitive_buffers_func;
-        std::function<char* (size_t)> per_tile_buffers_func;
-        std::function<char* (size_t)> per_subtile_buffers_func;
-        std::function<char* (size_t)> per_instance_buffers_func;
-    };
-
-    struct Pose {
-        const float4* M;
-        const float4* VPM;
-        const float4* VPR_inv;
-        const float3* cam_position;
-        const float2* gaze_position;
-    };
-
-    struct Intrinsics {
-        const int width;
-        const int height;
-        const float focal_x;
-        const float focal_y;
-        const float center_x;
-        const float center_y;
-    };
-    
-    struct Masks {
-        const uint* render_mask;
-        const uint* render_mask_area_table;
-        const uint* fovea_mask_area_table;
-    };
-
-    struct BackgroundModel {
-        const float* data;
-        const BackgroundModelType type;
-    };
-
-
     void inference_stereo(
         const Buffers& buffers_left,
         const Buffers& buffers_right,

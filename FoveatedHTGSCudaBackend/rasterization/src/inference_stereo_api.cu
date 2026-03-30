@@ -122,7 +122,14 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
     const torch::TensorOptions byte_options = torch::TensorOptions().dtype(torch::kByte).device(torch::kCUDA);
     torch::Tensor image_left = to_chw ? torch::empty({3, height_left, width_left}, float_options) : torch::empty({height_left, width_left, 3}, float_options);
     torch::Tensor image_right = to_chw ? torch::empty({3, height_right, width_right}, float_options) : torch::empty({height_right, width_right, 3}, float_options);
-    
+    // When blurring the periphery, we need an extra image buffer
+    torch::Tensor image_temp_left = blur_periphery ?
+            (to_chw ? torch::empty({3, height_left, width_left}, float_options) : torch::empty({height_left, width_left, 3}, float_options))
+            : torch::empty({0}, float_options);
+    torch::Tensor image_temp_right = blur_periphery ?
+            (to_chw ? torch::empty({3, height_right, width_right}, float_options) : torch::empty({height_right, width_right, 3}, float_options))
+            : torch::empty({0}, float_options);
+
     torch::Tensor buffers[8] = {
         torch::empty({0}, byte_options), // per_primitive_buffers_left
         torch::empty({0}, byte_options), // per_tile_buffers_left
@@ -146,14 +153,6 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         resize_function_wrapper(buffers[6]),
         resize_function_wrapper(buffers[7])
     };
-
-    // When blurring the periphery, we need an extra image buffer
-    torch::Tensor image_temp_left = blur_periphery ?
-            (to_chw ? torch::empty({3, height_left, width_left}, float_options) : torch::empty({height_left, width_left, 3}, float_options))
-            : torch::empty({0}, float_options);
-    torch::Tensor image_temp_right = blur_periphery ?
-            (to_chw ? torch::empty({3, height_right, width_right}, float_options) : torch::empty({height_right, width_right, 3}, float_options))
-            : torch::empty({0}, float_options);
 
     inference_stereo(
         buffers_left,

@@ -46,61 +46,46 @@ static void blend_k_templated(
 
 
 void htgs_foveated::rasterization::inference(
-    std::function<char* (size_t)> per_primitive_buffers_func,
-    std::function<char* (size_t)> per_tile_buffers_func,
-    std::function<char* (size_t)> per_subtile_buffers_func,
-    std::function<char* (size_t)> per_instance_buffers_func,
-    const float3* positions,
-    const float3* scales,
-    const float4* rotations,
-    const float* opacities,
-    const float3* sh_0,
-    const float3* sh_rest,
-    const float4* M,
-    const float4* VPM,
-    const float4* VPR_inv,
-    const float3* cam_position,
-    const float2* gaze_position,
-    float* image,
-    float* image_final,
-    const uint* render_mask,
-    const uint* render_mask_area_table,
-    const uint* fovea_mask_area_table,
-    const float* background_model_data,
-    const BackgroundModelType background_model_type,
-    const int K,
-    const int n_primitives,
-    const int active_sh_bases,
-    const int total_sh_bases,
-    const int width,
-    const int height,
-    const float focal_x,
-    const float focal_y,
-    const float center_x,
-    const float center_y,
-    const float near_plane,
-    const float far_plane,
-    const float scale_modifier,
-    const bool to_chw,
-    const bool blur_periphery,
-    const bool anti_aliasing)
+        const Buffers& buffers,
+        const float3* positions,
+        const float3* scales,
+        const float4* rotations,
+        const float* opacities,
+        const float3* sh_0,
+        const float3* sh_rest,
+        const BackgroundModel& background_model,
+        const Pose& pose,
+        const Intrinsics& intrinsics,
+        const Masks& masks,
+        float* image,
+        float* image_final,
+        const int K,
+        const int n_primitives,
+        const int active_sh_bases,
+        const int total_sh_bases,
+        const float near_plane,
+        const float far_plane,
+        const float scale_modifier,
+        const bool to_chw,
+        const bool blur_periphery,
+        const bool anti_aliasing)
 {
-    cudaMemcpyToSymbol(c_M, M, 3 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
-    cudaMemcpyToSymbol(c_VPM, VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
-    cudaMemcpyToSymbol(c_VPR_inv, VPR_inv, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
-    cudaMemcpyToSymbol(c_cam_position, cam_position, sizeof(float3), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_M, pose.M, 3 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_VPM, pose.VPM, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_VPR_inv, pose.VPR_inv, 4 * sizeof(float4), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_cam_position, pose.cam_position, sizeof(float3), 0, cudaMemcpyDeviceToDevice);
 
     const float2 gaze_position_clamped = make_float2(
-        clamp(gaze_position->x, 0.0f, static_cast<float>(width - 1)),
-        clamp(gaze_position->y, 0.0f, static_cast<float>(height - 1))
+        clamp(pose.gaze_position->x, 0.0f, static_cast<float>(intrinsics.width - 1)),
+        clamp(pose.gaze_position->y, 0.0f, static_cast<float>(intrinsics.height - 1))
     );
     cudaMemcpyToSymbol(c_gaze_position_cuda, &gaze_position_clamped, sizeof(float2), 0, cudaMemcpyHostToDevice);
 
-    if (background_model_type == BackgroundModelType::SH) {
-        cudaMemcpyToSymbol(c_background_sh_coeff, background_model_data, 16 * sizeof(float3), 0, cudaMemcpyDeviceToDevice);
+    if (background_model.type == BackgroundModelType::SH) {
+        cudaMemcpyToSymbol(c_background_sh_coeff, background_model.data, 16 * sizeof(float3), 0, cudaMemcpyDeviceToDevice);
     }
 
-    const dim3 grid_large(div_round_up(width, config::tile_width_large), div_round_up(height, config::tile_height_large), 1);
+    const dim3 grid_large(div_round_up(intrinsics.width, config::tile_width_large), div_round_up(intrinsics.height, config::tile_height_large), 1);
     const dim3 grid(grid_large.x * config::tile_stride_x, grid_large.y * config::tile_stride_y, 1);
     const dim3 block(config::tile_width_small, config::tile_height_small, 1);
     const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
@@ -108,7 +93,7 @@ void htgs_foveated::rasterization::inference(
     const int n_tiles = grid.x * grid.y;
     const int end_bit = extract_end_bit(n_tiles);
 
-    cudaMemcpyToSymbol(c_render_mask, render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
+    cudaMemcpyToSymbol(c_render_mask, masks.render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
 
     // Round gaze to nearest large tile (top left corner of tile)
     const int2 gaze_position_tiles_int = make_int2(
@@ -121,14 +106,14 @@ void htgs_foveated::rasterization::inference(
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
-    char* per_primitive_buffers_blob = per_primitive_buffers_func(required<PerPrimitiveBuffers>(n_primitives, store_rgba, store_rgb_clamp_info));
+    char* per_primitive_buffers_blob = buffers.per_primitive_buffers_func(required<PerPrimitiveBuffers>(n_primitives, store_rgba, store_rgb_clamp_info));
     PerPrimitiveBuffers per_primitive_buffers = PerPrimitiveBuffers::from_blob(per_primitive_buffers_blob, n_primitives, store_rgba, store_rgb_clamp_info);
 
-    char* per_tile_buffers_blob = per_tile_buffers_func(required<PerTileBuffers>(n_tiles_large));
+    char* per_tile_buffers_blob = buffers.per_tile_buffers_func(required<PerTileBuffers>(n_tiles_large));
     PerTileBuffers per_tile_buffers = PerTileBuffers::from_blob(per_tile_buffers_blob, n_tiles_large);
 
     // TODO: This is an overallocation; should be optimized to use num_active_tiles
-    char* per_sub_tile_buffers_blob = per_subtile_buffers_func(required<PerSubTileBuffers>(n_tiles));
+    char* per_sub_tile_buffers_blob = buffers.per_subtile_buffers_func(required<PerSubTileBuffers>(n_tiles));
     PerSubTileBuffers per_sub_tile_buffers = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob, n_tiles);
 
     static cudaStream_t memset_stream = 0;
@@ -221,20 +206,20 @@ void htgs_foveated::rasterization::inference(
         per_primitive_buffers.VPMT4,
         per_primitive_buffers.MT3,
         per_primitive_buffers.rgba,
-        render_mask_area_table,
-        fovea_mask_area_table,
+        masks.render_mask_area_table,
+        masks.fovea_mask_area_table,
         n_primitives,
         grid_large.x,
         grid_large.y,
         active_sh_bases,
         total_sh_bases,
         gaze_position_tiles_int,
-        static_cast<float>(width),
-        static_cast<float>(height),
-        focal_x,
-        focal_y,
-        center_x,
-        center_y,
+        static_cast<float>(intrinsics.width),
+        static_cast<float>(intrinsics.height),
+        intrinsics.focal_x,
+        intrinsics.focal_y,
+        intrinsics.center_x,
+        intrinsics.center_y,
         near_plane,
         far_plane,
         scale_modifier
@@ -255,22 +240,19 @@ void htgs_foveated::rasterization::inference(
 
     std::variant<PerInstanceBuffers<ushort>, PerInstanceBuffers<uint>> buffer_variant;
     if (end_bit <= 16) {
-        char* per_instance_buffers_blob = per_instance_buffers_func(required<PerInstanceBuffers<ushort>>(n_instances, end_bit));
+        char* per_instance_buffers_blob = buffers.per_instance_buffers_func(required<PerInstanceBuffers<ushort>>(n_instances, end_bit));
         buffer_variant = PerInstanceBuffers<ushort>::from_blob(per_instance_buffers_blob, n_instances, end_bit);
     }
     else {
-        char* per_instance_buffers_blob = per_instance_buffers_func(required<PerInstanceBuffers<uint>>(n_instances, end_bit));
+        char* per_instance_buffers_blob = buffers.per_instance_buffers_func(required<PerInstanceBuffers<uint>>(n_instances, end_bit));
         buffer_variant = PerInstanceBuffers<uint>::from_blob(per_instance_buffers_blob, n_instances, end_bit);
     }
 
-    int instance_primitive_indices_selector;
     std::visit([&](auto& per_instance_buffers) {
         using KeyT = std::remove_reference_t<decltype(*per_instance_buffers.keys.Current())>;
 
         // Ensure random initialized keys cannot overlap with actual valid keys
         cudaMemset(per_instance_buffers.keys.Current(), 255, sizeof(KeyT) * n_instances);
-        // compute-sanitizer will complain if the following isn't also executed
-        // cudaMemset(per_instance_buffers.primitive_indices.Current(), 255, sizeof(uint) * n_instances);
 
         kernels::shared::create_instances_cu<KeyT, config::foveation_radius_tiles, config::num_small_tiles_per_large_tile, 0><<<div_round_up(n_primitives, config::block_size_create_instances), config::block_size_create_instances>>>(
             per_primitive_buffers.n_touched_tiles,
@@ -292,7 +274,6 @@ void htgs_foveated::rasterization::inference(
             n_instances,
             0, end_bit
         );
-        instance_primitive_indices_selector = per_instance_buffers.primitive_indices.selector;
         CHECK_CUDA(config::debug_inference, "cub::DeviceRadixSort::SortPairs")
 
         if (n_instances > 0) {
@@ -304,24 +285,56 @@ void htgs_foveated::rasterization::inference(
             CHECK_CUDA(config::debug_inference, "extract_instance_ranges")
         }
 
-        // TODO: Try applying CUDA Graphs to better express dependencies
+        // Ensure pre-processing is fully done before blending
+        static cudaEvent_t preprocess_done = 0;
+        if constexpr (!config::debug_inference) {
+            static bool preprocess_events_initialized = false;
+            if (!preprocess_events_initialized) {
+                cudaEventCreate(&preprocess_done);
+                preprocess_events_initialized = true;
+            }
+
+            cudaEventRecord(preprocess_done, 0);
+        }
+
         static cudaStream_t blend_fovea_stream = 0;
         static cudaStream_t blend_periphery_stream = 0;
         static cudaStream_t blend_blended_tiles_stream = 0;
         static bool blend_streams_initialized = false;
-        if (!blend_streams_initialized) {
-            cudaStreamCreate(&blend_fovea_stream);
-            cudaStreamCreate(&blend_periphery_stream);
-            cudaStreamCreate(&blend_blended_tiles_stream);
-            blend_streams_initialized = true;
+        if constexpr (!config::debug_inference) {
+            if (!blend_streams_initialized) {
+                cudaStreamCreate(&blend_fovea_stream);
+                cudaStreamCreate(&blend_periphery_stream);
+                cudaStreamCreate(&blend_blended_tiles_stream);
+                blend_streams_initialized = true;
+            }
+
+            cudaStreamWaitEvent(blend_fovea_stream, preprocess_done, 0);
+            cudaStreamWaitEvent(blend_periphery_stream, preprocess_done, 0);
+            cudaStreamWaitEvent(blend_blended_tiles_stream, preprocess_done, 0);
         }
 
         const dim3 blend_grid_fovea(num_tiles_fovea, 1, 1);
         const dim3 blend_grid_periphery(num_tiles_periphery, 1, 1);
         const dim3 blend_grid_blended(num_tiles_blended, 1, 1);
+        static struct {
+            cudaEvent_t fovea;
+            cudaEvent_t blended;
+            cudaEvent_t periphery;
+        } blend_done = {0,0,0};
+        if constexpr (!config::debug_inference) {
+            static bool blend_events_initialized = false;
+            if (!blend_events_initialized) {
+                cudaEventCreate(&blend_done.fovea);
+                cudaEventCreate(&blend_done.blended);
+                cudaEventCreate(&blend_done.periphery);
+                blend_events_initialized = true;
+            }
+        }
+
         // Blended tiles and periphery required to do hole filling, so queue those kernel launches first
         if (num_tiles_blended > 0) {
-            blend_k_templated<false>(blend_grid_blended, block, blend_blended_tiles_stream, K, background_model_type,
+            blend_k_templated<false>(blend_grid_blended, block, blend_blended_tiles_stream, K, background_model.type,
                 per_sub_tile_buffers.tile_index_map_partitioned,
                 per_sub_tile_buffers.instance_ranges,
                 per_instance_buffers.primitive_indices.Current(),
@@ -330,18 +343,19 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.VPMT4,
                 per_primitive_buffers.MT3,
                 per_primitive_buffers.rgba,
-                background_model_data,
+                background_model.data,
                 image,
                 partition_ranges_cpu.blended_tiles_range.x,
-                width,
-                height,
+                intrinsics.width,
+                intrinsics.height,
                 grid_large.x,
                 to_chw
             );
+            if constexpr (!config::debug_inference) cudaEventRecord(blend_done.blended, blend_blended_tiles_stream);
             CHECK_CUDA(config::debug_inference, "blend_blended_tiles")
         }
         if (num_tiles_periphery > 0) {
-            blend_k_templated<true>(blend_grid_periphery, block, blend_periphery_stream, K, background_model_type,
+            blend_k_templated<true>(blend_grid_periphery, block, blend_periphery_stream, K, background_model.type,
                 per_sub_tile_buffers.tile_index_map_partitioned,
                 per_sub_tile_buffers.instance_ranges,
                 per_instance_buffers.primitive_indices.Current(),
@@ -350,18 +364,19 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.VPMT4,
                 per_primitive_buffers.MT3,
                 per_primitive_buffers.rgba,
-                background_model_data,
+                background_model.data,
                 image,
                 partition_ranges_cpu.periphery_tiles_range.x,
-                width,
-                height,
+                intrinsics.width,
+                intrinsics.height,
                 grid_large.x,
                 to_chw
             );
+            if constexpr (!config::debug_inference) cudaEventRecord(blend_done.periphery, blend_periphery_stream);
             CHECK_CUDA(config::debug_inference, "blend_periphery")
         }
         if (num_tiles_fovea > 0) {
-            blend_k_templated<false>(blend_grid_fovea, block, blend_fovea_stream, K, background_model_type,
+            blend_k_templated<false>(blend_grid_fovea, block, blend_fovea_stream, K, background_model.type,
                 per_sub_tile_buffers.tile_index_map_partitioned,
                 per_sub_tile_buffers.instance_ranges,
                 per_instance_buffers.primitive_indices.Current(),
@@ -370,19 +385,18 @@ void htgs_foveated::rasterization::inference(
                 per_primitive_buffers.VPMT4,
                 per_primitive_buffers.MT3,
                 per_primitive_buffers.rgba,
-                background_model_data,
+                background_model.data,
                 image_final,
                 partition_ranges_cpu.fovea_tiles_range.x,
-                width,
-                height,
+                intrinsics.width,
+                intrinsics.height,
                 grid_large.x,
                 to_chw
             );
+            if constexpr (!config::debug_inference) cudaEventRecord(blend_done.fovea, blend_fovea_stream);
             CHECK_CUDA(config::debug_inference, "blend_fovea")
         }
 
-        cudaStreamSynchronize(blend_blended_tiles_stream);
-        cudaStreamSynchronize(blend_periphery_stream);
         if (blur_periphery) {
             dim3 blend_grid_blur = blend_grid_periphery;
             dim3 blend_grid_blur_blended = blend_grid_blended;
@@ -392,13 +406,15 @@ void htgs_foveated::rasterization::inference(
             blend_grid_blur_blended.z = config::tile_stride_y;
 
             if (num_tiles_periphery > 0) {
+                // Wait for blended tiles blending to be done
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream, blend_done.blended, 0);
                 kernels::interpolation::interpolate_and_blur<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
                     partition_ranges_cpu.periphery_tiles_range.x,
-                    width,
-                    height,
+                    intrinsics.width,
+                    intrinsics.height,
                     grid_large.x,
                     to_chw
                 );
@@ -406,18 +422,20 @@ void htgs_foveated::rasterization::inference(
             }
 
             if (num_tiles_blended > 0) {
+                // Wait for fovea + periphery blending to be done
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.fovea, 0);
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.periphery, 0);
                 kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended, half_block, 0, blend_blended_tiles_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
                     partition_ranges_cpu.blended_tiles_range.x,
-                    width,
-                    height,
+                    intrinsics.width,
+                    intrinsics.height,
                     grid_large.x,
                     to_chw
                 );
                 CHECK_CUDA(config::debug_inference, "blur_blended")
-                cudaStreamSynchronize(blend_blended_tiles_stream);
             }
         } else {
             // TODO: Implement non-blur path
@@ -425,5 +443,6 @@ void htgs_foveated::rasterization::inference(
 
         cudaStreamSynchronize(blend_fovea_stream);
         cudaStreamSynchronize(blend_periphery_stream);
+        cudaStreamSynchronize(blend_blended_tiles_stream);
     }, buffer_variant);
 }

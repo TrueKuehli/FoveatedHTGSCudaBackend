@@ -151,19 +151,17 @@ void htgs_foveated::rasterization::inference_stereo(
     PerSubTileBuffers per_sub_tile_buffers_left = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob_left, n_tiles_left);
     PerSubTileBuffers per_sub_tile_buffers_right = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob_right, n_tiles_right);
 
-    static cudaStream_t memset_left_stream = 0;
-    static cudaStream_t memset_right_stream = 0;
+    static cudaStream_t memset_stream = 0;
     if constexpr (!config::debug_inference) {
         static bool memset_stream_initialized = false;
         if (!memset_stream_initialized) {
-            cudaStreamCreate(&memset_left_stream);
-            cudaStreamCreate(&memset_right_stream);
+            cudaStreamCreate(&memset_stream);
             memset_stream_initialized = true;
         }
-        cudaMemsetAsync(per_sub_tile_buffers_left.instance_ranges, 0, sizeof(uint2) * n_tiles_left, memset_left_stream);
-        cudaMemsetAsync(per_sub_tile_buffers_left.partition_ranges, 0, sizeof(PartitionRanges), memset_left_stream);
-        cudaMemsetAsync(per_sub_tile_buffers_right.instance_ranges, 0, sizeof(uint2) * n_tiles_right, memset_right_stream);
-        cudaMemsetAsync(per_sub_tile_buffers_right.partition_ranges, 0, sizeof(PartitionRanges), memset_right_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_left.instance_ranges, 0, sizeof(uint2) * n_tiles_left, memset_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_left.partition_ranges, 0, sizeof(PartitionRanges), memset_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_right.instance_ranges, 0, sizeof(uint2) * n_tiles_right, memset_stream);
+        cudaMemsetAsync(per_sub_tile_buffers_right.partition_ranges, 0, sizeof(PartitionRanges), memset_stream);
     } else {
         cudaMemset(per_sub_tile_buffers_left.instance_ranges, 0, sizeof(uint2) * n_tiles_left);
         cudaMemset(per_sub_tile_buffers_left.partition_ranges, 0, sizeof(PartitionRanges));
@@ -246,7 +244,6 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "build_tile_index_map right")
 
-    // TODO: Can we get rid of this?
     cudaStreamSynchronize(preprocess_left_stream);
     cudaStreamSynchronize(preprocess_right_stream);
 
@@ -272,11 +269,7 @@ void htgs_foveated::rasterization::inference_stereo(
         num_active_tiles_right, 0, NUM_TILE_TYPE_BITS, preprocess_right_stream
     );
     CHECK_CUDA(config::debug_inference, "Sort tiles by type right")
-
-    if constexpr (!config::debug_inference) {
-        cudaStreamSynchronize(memset_left_stream);
-        cudaStreamSynchronize(memset_right_stream);
-    }
+    if constexpr (!config::debug_inference) cudaStreamSynchronize(memset_stream);
     kernels::shared::get_partition_ranges_cu
             <<<div_round_up(static_cast<int>(num_active_tiles_left), config::block_size_get_partition_ranges), config::block_size_get_partition_ranges, 0, preprocess_left_stream>>>
     (
@@ -294,7 +287,6 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "Partition tiles by type (right)")
 
-    // TODO: Can we get rid of this?
     cudaStreamSynchronize(preprocess_left_stream);
     cudaStreamSynchronize(preprocess_right_stream);
 
@@ -403,7 +395,6 @@ void htgs_foveated::rasterization::inference_stereo(
     );
     CHECK_CUDA(config::debug_inference, "cub::DeviceScan::InclusiveSum (right)")
 
-    // TODO: Can we get rid of this?
     cudaStreamSynchronize(preprocess_left_stream);
     cudaStreamSynchronize(preprocess_right_stream);
 
@@ -552,19 +543,23 @@ void htgs_foveated::rasterization::inference_stereo(
             const dim3 blend_grid_fovea_right(num_tiles_fovea_right, 1, 1);
             const dim3 blend_grid_periphery_right(num_tiles_periphery_right, 1, 1);
             const dim3 blend_grid_blended_right(num_tiles_blended_right, 1, 1);
-
-            static cudaEvent_t blend_done[2][3] = {{0,0,0},{0,0,0}};
+            static struct {
+                cudaEvent_t fovea;
+                cudaEvent_t blended;
+                cudaEvent_t periphery;
+            } blend_done[2] = {{0,0,0},{0,0,0}};
             if constexpr (!config::debug_inference) {
                 static bool blend_events_initialized = false;
                 if (!blend_events_initialized) {
                     for (int cam = 0; cam < 2; ++cam) {
-                        for (int part = 0; part < 3; ++part) {
-                            cudaEventCreate(&blend_done[cam][part]);
-                        }
+                        cudaEventCreate(&blend_done[cam].fovea);
+                        cudaEventCreate(&blend_done[cam].blended);
+                        cudaEventCreate(&blend_done[cam].periphery);
                     }
                     blend_events_initialized = true;
                 }
             }
+
             if (num_tiles_blended_left > 0) {
                 blend_k_templated<false, 0>(blend_grid_blended_left, block, blend_blended_tiles_stream_left, K, background_model.type,
                     per_sub_tile_buffers_left.tile_index_map_partitioned,
@@ -583,7 +578,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_left_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][1], blend_blended_tiles_stream_left);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0].blended, blend_blended_tiles_stream_left);
                 CHECK_CUDA(config::debug_inference, "blend_blended_tiles (left)")
             }
             if (num_tiles_blended_right > 0) {
@@ -604,7 +599,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_right_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][1], blend_blended_tiles_stream_right);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1].blended, blend_blended_tiles_stream_right);
                 CHECK_CUDA(config::debug_inference, "blend_blended_tiles (right)")
             }
             if (num_tiles_periphery_left > 0) {
@@ -625,7 +620,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_left_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][2], blend_periphery_stream_left);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0].periphery, blend_periphery_stream_left);
                 CHECK_CUDA(config::debug_inference, "blend_periphery (left)")
             }
             if (num_tiles_periphery_right > 0) {
@@ -646,7 +641,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_right_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][2], blend_periphery_stream_right);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1].periphery, blend_periphery_stream_right);
                 CHECK_CUDA(config::debug_inference, "blend_periphery (right)")
             }
             if (num_tiles_fovea_left > 0) {
@@ -667,7 +662,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_left_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0][0], blend_fovea_stream_left);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[0].fovea, blend_fovea_stream_left);
                 CHECK_CUDA(config::debug_inference, "blend_fovea (left)")
             }
             if (num_tiles_fovea_right > 0) {
@@ -688,7 +683,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     grid_right_large.x,
                     to_chw
                 );
-                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1][0], blend_fovea_stream_right);
+                if constexpr (!config::debug_inference) cudaEventRecord(blend_done[1].fovea, blend_fovea_stream_right);
                 CHECK_CUDA(config::debug_inference, "blend_fovea (right)")
             }
 
@@ -706,9 +701,9 @@ void htgs_foveated::rasterization::inference_stereo(
                 blend_grid_blur_blended_right.y = config::tile_stride_x;
                 blend_grid_blur_blended_right.z = config::tile_stride_y;
 
-                                if (num_tiles_periphery_left > 0) {
+                if (num_tiles_periphery_left > 0) {
                     // Wait for blended tiles blending to be done
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0][1], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0].blended, 0);
                     kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
                         image_left_final,
                         image_left,
@@ -723,7 +718,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 }
                 if (num_tiles_periphery_right > 0) {
                     // Wait for blended tiles blending to be done
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1][1], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1].blended, 0);
                     kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
                         image_right_final,
                         image_right,
@@ -738,8 +733,8 @@ void htgs_foveated::rasterization::inference_stereo(
                 }
                 if (num_tiles_blended_left > 0) {
                     // Wait for fovea + periphery blending to be done
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][0], 0);
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0][2], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].fovea, 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].periphery, 0);
                     kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
                         image_left_final,
                         image_left,
@@ -754,8 +749,8 @@ void htgs_foveated::rasterization::inference_stereo(
                 }
                 if (num_tiles_blended_right > 0) {
                     // Wait for fovea + periphery blending to be done
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][0], 0);
-                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1][2], 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].fovea, 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].periphery, 0);
                     kernels::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
                         image_right_final,
                         image_right,
