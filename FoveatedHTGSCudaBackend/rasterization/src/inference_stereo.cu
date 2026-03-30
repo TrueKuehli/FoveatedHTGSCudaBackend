@@ -130,8 +130,8 @@ void htgs_foveated::rasterization::inference_stereo(
         static_cast<float>(gaze_position_left_tiles_int.y)
     );
     const float2 gaze_position_right_tiles = make_float2(
-        static_cast<float>(gaze_position_right_tiles.x),
-        static_cast<float>(gaze_position_right_tiles.y)
+        static_cast<float>(gaze_position_right_tiles_int.x),
+        static_cast<float>(gaze_position_right_tiles_int.y)
     );
 
     constexpr bool store_rgba = true, store_rgb_clamp_info = false;
