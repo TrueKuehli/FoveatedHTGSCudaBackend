@@ -15,7 +15,7 @@
 
 
 template <bool is_lowres_tile, BackgroundModelType background_model, uint8_t cam_idx, typename... Args>
-void blend_k_templated_background_model(
+static void blend_k_templated_background_model(
     const dim3& grid,
     const dim3& block,
     const cudaStream_t stream,
@@ -31,7 +31,7 @@ void blend_k_templated_background_model(
 }
 
 template <bool is_lowres_tile, uint8_t cam_idx, typename... Args>
-void blend_k_templated(
+static void blend_k_templated(
     const dim3& grid,
     const dim3& block,
     const cudaStream_t stream,
