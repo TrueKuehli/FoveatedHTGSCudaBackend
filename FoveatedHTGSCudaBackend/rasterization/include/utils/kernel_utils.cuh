@@ -22,7 +22,6 @@ __device__ __constant__ float4 c_VPM[MAX_CAMERAS][4];
 __device__ __constant__ float4 c_VPR_inv[MAX_CAMERAS][4];
 __device__ __constant__ float3 c_cam_position[MAX_CAMERAS];
 __device__ __constant__ float2 c_gaze_position_cuda[MAX_CAMERAS];
-__device__ __constant__ uint32_t c_render_mask[MAX_CAMERAS][4096 / MAX_CAMERAS];  // For MAX_CAMERAS==2 Sufficient for 256x256 tiles (total 65,536 tiles = 16 MP)
 __device__ __constant__ float3 c_background_sh_coeff[16];
 
 struct Mat3x3 {

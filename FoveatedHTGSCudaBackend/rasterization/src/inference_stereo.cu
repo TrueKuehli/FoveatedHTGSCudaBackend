@@ -113,9 +113,6 @@ void htgs_foveated::rasterization::inference_stereo(
     const int end_bit_left = extract_end_bit(n_tiles_left);
     const int end_bit_right = extract_end_bit(n_tiles_right);
 
-    cudaMemcpyToSymbol(c_render_mask, masks_left.render_mask, div_round_up(grid_left_large.x * grid_left_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
-    cudaMemcpyToSymbol(c_render_mask, masks_right.render_mask, div_round_up(grid_right_large.x * grid_right_large.y, 8U), sizeof(c_render_mask[0]), cudaMemcpyDeviceToDevice);
-
     // Round gaze to nearest large tile (top left corner of tile)
     const int2 gaze_position_left_tiles_int = make_int2(
         max(0, min(static_cast<int>(grid_left.x - 1), (static_cast<int>(gaze_position_clamped_left.x) + config::tile_width_large / 2) / config::tile_width_large)),
@@ -186,6 +183,7 @@ void htgs_foveated::rasterization::inference_stereo(
             <<<div_round_up(n_tiles_large_left, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_left_stream>>>
     (
         per_tile_buffers_left.tile_index_map_num_tiles,
+        masks_left.render_mask,
         gaze_position_left_tiles,
         n_tiles_large_left,
         grid_left_large.x
@@ -196,6 +194,7 @@ void htgs_foveated::rasterization::inference_stereo(
             <<<div_round_up(n_tiles_large_right, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_right_stream>>>
     (
         per_tile_buffers_right.tile_index_map_num_tiles,
+        masks_right.render_mask,
         gaze_position_right_tiles,
         n_tiles_large_right,
         grid_right_large.x
@@ -442,6 +441,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 per_primitive_buffers_left.screen_bounds,
                 per_instance_buffers_left.keys.Current(),
                 per_instance_buffers_left.primitive_indices.Current(),
+                masks_left.render_mask,
                 gaze_position_left_tiles,
                 grid_left_large.x,
                 n_primitives
@@ -453,6 +453,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 per_primitive_buffers_right.screen_bounds,
                 per_instance_buffers_right.keys.Current(),
                 per_instance_buffers_right.primitive_indices.Current(),
+                masks_right.render_mask,
                 gaze_position_right_tiles,
                 grid_right_large.x,
                 n_primitives

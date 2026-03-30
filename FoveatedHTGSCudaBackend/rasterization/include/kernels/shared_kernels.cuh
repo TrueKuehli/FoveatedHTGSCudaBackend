@@ -15,6 +15,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint4* primitive_screen_bounds,
         KeyT* instance_keys,
         uint* instance_primitive_indices,
+        const uint32_t* render_mask,
         const float2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives)
@@ -28,7 +29,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
                 const KeyT tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
-                if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+                if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea<foveation_radius_tiles>(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles)) {
                     // Tile is in fovea, so create instances for each small tile
@@ -55,6 +56,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const float* primitive_depths,
         uint64_t* instance_keys,
         uint* instance_primitive_indices,
+        const uint32_t* render_mask,
         const float2 gaze_position_tiles,
         const uint grid_width,
         const uint n_primitives)
@@ -69,7 +71,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
                 const uint64_t tile_idx = y * grid_width + x;
                 const int mask_byte_idx = tile_idx / 32;
                 const int mask_bit_idx = tile_idx % 32;
-                if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+                if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
 
                 if (is_in_fovea<foveation_radius_tiles>(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles)) {
                     // Tile is in fovea, so create instances for each small tile
@@ -103,6 +105,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
     template <int foveation_radius_tiles, int num_small_tiles, uint8_t cam_idx>
     __global__ inline void fill_tile_index_num_tiles(
         uint* tile_index_map_num_tiles,
+        const uint32_t* render_mask,
         const float2 gaze_position_tiles,
         const uint num_tiles_total,
         const uint grid_width
@@ -113,7 +116,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint mask_byte_idx = tile_idx / 32;
         const uint mask_bit_idx = tile_idx % 32;
 
-        if ((c_render_mask[cam_idx][mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
+        if ((render_mask[mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
             if (is_in_fovea<foveation_radius_tiles>(tile_idx, grid_width, gaze_position_tiles)) {
                 // Tiles in the fovea get split into n small tiles
                 tile_index_map_num_tiles[tile_idx] = num_small_tiles;

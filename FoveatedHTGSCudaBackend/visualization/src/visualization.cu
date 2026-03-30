@@ -80,7 +80,6 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
     const dim3 block_large(visualization::config::num_border_pixels_large, 1);
     const int n_tiles_large = grid_large.x * grid_large.y;
     const int n_tiles = grid.x * grid.y;
-    cudaMemcpyToSymbol(c_render_mask, render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
 
     // Round gaze to nearest large tile (top left corner of tile)
     const float2 gaze_position_tiles = make_float2(
@@ -115,6 +114,7 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
                             rasterization::config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
+        render_mask,
         gaze_position_tiles,
         n_tiles_large,
         grid_large.x

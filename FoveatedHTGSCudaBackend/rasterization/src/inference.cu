@@ -91,8 +91,6 @@ void htgs_foveated::rasterization::inference(
     const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
     const int n_tiles_large = grid_large.x * grid_large.y;
     const int n_tiles = grid.x * grid.y;
-
-    cudaMemcpyToSymbol(c_render_mask, masks.render_mask, div_round_up(grid_large.x * grid_large.y, 8U), 0, cudaMemcpyDeviceToDevice);
     const int end_bit = extract_end_bit(n_tiles + 1);
 
     // Round gaze to nearest large tile (top left corner of tile)
@@ -136,6 +134,7 @@ void htgs_foveated::rasterization::inference(
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
+        masks.render_mask,
         gaze_position_tiles,
         n_tiles_large,
         grid_large.x
@@ -260,6 +259,7 @@ void htgs_foveated::rasterization::inference(
             per_primitive_buffers.screen_bounds,
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
+            masks.render_mask,
             gaze_position_tiles,
             grid_large.x,
             n_primitives
