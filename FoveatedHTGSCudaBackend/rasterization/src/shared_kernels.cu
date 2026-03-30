@@ -2,6 +2,7 @@
 #include "kernels/shared_kernels.cuh"
 #include "utils/kernel_utils.cuh"
 #include <cstdint>
+#include <limits>
 
 
 namespace htgs_foveated::rasterization::kernels::shared {
@@ -14,7 +15,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const KeyT instance_tile_idx = instance_keys[instance_idx];
-        if (instance_tile_idx == ~static_cast<KeyT>(0)) return;  // Reject non-set keys
+        if (instance_tile_idx == std::numeric_limits<KeyT>::max()) return;  // Reject non-set keys
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
             const KeyT previous_instance_tile_idx = instance_keys[instance_idx - 1];
