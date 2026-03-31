@@ -755,7 +755,68 @@ void htgs_foveated::rasterization::inference_stereo(
                     CHECK_CUDA(config::debug_inference, "blur_blended (right)")
                 }
             } else {
-                // TODO: Implement non-blur path
+                if (num_tiles_periphery_left > 0) {
+                    // Wait for blended tiles blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0].blended, 0);
+                    kernels::interpolation::bilinear_interpolation<<<blend_grid_periphery_left, block_blur, 0, blend_periphery_stream_left>>>(
+                        image_left_final,
+                        masks_left.visibility_mask,
+                        per_sub_tile_buffers_left.tile_index_map_partitioned,
+                        partition_ranges_cpu_left.periphery_tiles_range.x,
+                        intrinsics_left.width,
+                        intrinsics_left.height,
+                        grid_left_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur (left)")
+                }
+                if (num_tiles_periphery_right > 0) {
+                    // Wait for blended tiles blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1].blended, 0);
+                    kernels::interpolation::bilinear_interpolation<<<blend_grid_periphery_right, block_blur, 0, blend_periphery_stream_right>>>(
+                        image_right_final,
+                        masks_right.visibility_mask,
+                        per_sub_tile_buffers_right.tile_index_map_partitioned,
+                        partition_ranges_cpu_right.periphery_tiles_range.x,
+                        intrinsics_right.width,
+                        intrinsics_right.height,
+                        grid_right_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur (right)")
+                }
+                if (num_tiles_blended_left > 0) {
+                    // Wait for fovea + periphery blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].fovea, 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].periphery, 0);
+                    kernels::interpolation::bilinear_interpolation_blended<0><<<blend_grid_blended_left, block, 0, blend_blended_tiles_stream_left>>>(
+                        image_left_final,
+                        masks_left.visibility_mask,
+                        per_sub_tile_buffers_left.tile_index_map_partitioned,
+                        partition_ranges_cpu_left.blended_tiles_range.x,
+                        intrinsics_left.width,
+                        intrinsics_left.height,
+                        grid_left_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur_blended (left)")
+                }
+                if (num_tiles_blended_right > 0) {
+                    // Wait for fovea + periphery blending to be done
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].fovea, 0);
+                    if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].periphery, 0);
+                    kernels::interpolation::bilinear_interpolation_blended<1><<<blend_grid_blended_right, block, 0, blend_blended_tiles_stream_right>>>(
+                        image_right_final,
+                        masks_right.visibility_mask,
+                        per_sub_tile_buffers_right.tile_index_map_partitioned,
+                        partition_ranges_cpu_right.blended_tiles_range.x,
+                        intrinsics_right.width,
+                        intrinsics_right.height,
+                        grid_right_large.x,
+                        to_chw
+                    );
+                    CHECK_CUDA(config::debug_inference, "blur_blended (right)")
+                }
             }
 
             cudaStreamSynchronize(blend_fovea_stream_left);

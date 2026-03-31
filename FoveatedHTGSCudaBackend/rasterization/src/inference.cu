@@ -432,7 +432,38 @@ void htgs_foveated::rasterization::inference(
                 CHECK_CUDA(config::debug_inference, "blur_blended")
             }
         } else {
-            // TODO: Implement non-blur path
+            if (num_tiles_periphery > 0) {
+                // Wait for blended tiles blending to be done
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream, blend_done.blended, 0);
+                kernels::interpolation::bilinear_interpolation<<<blend_grid_periphery, block_blur, 0, blend_periphery_stream>>>(
+                    image_final,
+                    masks.visibility_mask,
+                    per_sub_tile_buffers.tile_index_map_partitioned,
+                    partition_ranges_cpu.periphery_tiles_range.x,
+                    intrinsics.width,
+                    intrinsics.height,
+                    grid_large.x,
+                    to_chw
+                );
+                CHECK_CUDA(config::debug_inference, "interpolate")
+            }
+
+            if (num_tiles_blended > 0) {
+                // Wait for fovea + periphery blending to be done
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.fovea, 0);
+                if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.periphery, 0);
+                kernels::interpolation::bilinear_interpolation_blended<0><<<blend_grid_blended, block, 0, blend_blended_tiles_stream>>>(
+                    image_final,
+                    masks.visibility_mask,
+                    per_sub_tile_buffers.tile_index_map_partitioned,
+                    partition_ranges_cpu.blended_tiles_range.x,
+                    intrinsics.width,
+                    intrinsics.height,
+                    grid_large.x,
+                    to_chw
+                );
+                CHECK_CUDA(config::debug_inference, "interpolate_blended")
+            }
         }
 
         cudaStreamSynchronize(blend_fovea_stream);

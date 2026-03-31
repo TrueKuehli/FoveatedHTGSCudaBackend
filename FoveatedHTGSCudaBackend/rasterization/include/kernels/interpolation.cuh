@@ -37,100 +37,227 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         }
     }
 
-    __global__ void __launch_bounds__(config::block_size_blur) interpolate_missing(
+
+    __global__ void __launch_bounds__(config::block_size_blur) bilinear_interpolation(
         float* image,
+        const uint32_t* visibility_mask,
+        const uint* tile_index_map,
+        const uint tile_offset,
         const uint width,
         const uint height,
         const uint grid_width,
-        const float2 gaze_position_tiles,
         const bool output_chw
     ) {
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
-        const dim3 group_index = block.group_index();
+        const uint group_index = block.group_index().x + tile_offset;
+        const uint true_group_index = tile_index_map[group_index];
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+
         const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
-        const uint large_tile_index = group_index.y / config::tile_stride_y * grid_width + group_index.x / config::tile_stride_x;
-        const bool is_fovea_tile = is_in_fovea<config::foveation_radius_tiles>(large_tile_index, grid_width, gaze_position_tiles);
-        if (is_fovea_tile) return;
+        int base_pixel_x = large_tile_index_2d.x * config::tile_width_large;
+        int base_pixel_y = large_tile_index_2d.y * config::tile_height_large;
 
-        const uint2 pixel_coords = make_uint2(
-            group_index.x * config::tile_width_small + thread_index.x,
-            group_index.y * config::tile_height_small + thread_index.y
-        );
-        const bool inside = pixel_coords.x < width && pixel_coords.y < height;
+        // We get one sample below/right of the tile boundary; with the number of samples in the tile
+        //   boundary being equal to the number of pixels in a full-resolution tile
+        constexpr const int num_sample_points_x = config::tile_width_small + 1;
+        constexpr const int num_sample_points_y = config::tile_height_small + 1;
+        constexpr const int num_sample_points = num_sample_points_x * num_sample_points_y;
+        constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur - 1) / config::block_size_blur; // ceil division
+        __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
+
+        // Collaborative loading of sample points
+        for (int i = 0; i < n_iters_loading; i++) {
+            block.sync();
+            const int current_fetch_idx = thread_rank + i * config::block_size_blur;
+            if (current_fetch_idx < num_sample_points) {
+                int sample_x = current_fetch_idx % num_sample_points_x;
+                int sample_y = current_fetch_idx / num_sample_points_x;
+                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
+                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+
+                const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
+                const int mask_byte_idx = sample_tile_idx / 32;
+                const int mask_bit_idx = sample_tile_idx % 32;
+                if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) {
+                    // Clamp to nearest valid pixel within the tile boundary if outside the image boundary; this is to avoid artifacts from sampling black pixels outside the image
+                    int clamped_pixel_x = clamp(pixel_x,
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large),
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large + config::tile_width_large - config::tile_stride_x));
+                    int clamped_pixel_y = clamp(pixel_y,
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large),
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large + config::tile_height_large - config::tile_stride_y));
+                    sample_points[sample_y][sample_x] = sample_rgb(image, clamped_pixel_x, clamped_pixel_y, width, height, output_chw);
+                } else {
+                    sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+                }
+            }
+            block.sync();
+        }
+
+        // Sample idx of top left pixel
+        int base_sample_x = thread_index.x / config::tile_stride_x;
+        int base_sample_y = thread_index.y / config::tile_stride_y;
+
+        int pixel_x = large_tile_index_2d.x * config::tile_width_large + thread_index.x;
+        int pixel_y = large_tile_index_2d.y * config::tile_height_large + thread_index.y;
+        const bool inside = pixel_x < width && pixel_y < height;
         if (!inside) return;
 
-        const uint2 pixel_stride_coords = make_uint2(
-            thread_index.x % config::tile_stride_x,
-            thread_index.y % config::tile_stride_y
-        );
-        if (pixel_stride_coords.x == 0 && pixel_stride_coords.y == 0) {
-            // Top left pixel is already set
+        float3 interpolated_rgb = make_float3(0.0f);
+        uint x_mod = thread_index.x % config::tile_stride_x;
+        uint y_mod = thread_index.y % config::tile_stride_y;
+        float x_frac = float(x_mod) / float(config::tile_stride_x);
+        float y_frac = float(y_mod) / float(config::tile_stride_y);
+
+        if ((thread_index.x % config::tile_stride_x) == 0 && (thread_index.y % config::tile_stride_y) == 0) {
+            // Sample position, value already set in image
             return;
+        } else if ((thread_index.x % config::tile_stride_x) == 0) {  // x is directly on the sample
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x] * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x] * y_frac;
+        } else if ((thread_index.y % config::tile_stride_y) == 0) {  // y is directly on the sample
+            interpolated_rgb += sample_points[base_sample_y][base_sample_x    ] * (1.0f - x_frac);
+            interpolated_rgb += sample_points[base_sample_y][base_sample_x + 1] * x_frac;
+        } else {
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x    ] * (1.0f - x_frac) * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x + 1] * x_frac          * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x    ] * (1.0f - x_frac) * y_frac;
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x + 1] * x_frac          * y_frac;
         }
 
-        const float4 bilinear_factors = make_float4(
-            (1.0 - float(thread_index.x % config::tile_stride_x) / float(config::tile_stride_x))
-            * (1.0 - float(thread_index.y % config::tile_stride_y) / float(config::tile_stride_y)),  // Top Left
-
-            (float(thread_index.x % config::tile_stride_x) / float(config::tile_stride_x))
-            * (1.0 - float(thread_index.y % config::tile_stride_y) / float(config::tile_stride_y)),  // Top Right
-
-            (1.0 - float(thread_index.x % config::tile_stride_x) / float(config::tile_stride_x))
-            * (float(thread_index.y % config::tile_stride_y) / float(config::tile_stride_y)),  // Bottom Left
-
-            (float(thread_index.x % config::tile_stride_x) / float(config::tile_stride_x))
-            * (float(thread_index.y % config::tile_stride_y) / float(config::tile_stride_y))  // Bottom Right
-        );
-        const uint2 top_left_pixel_coords = make_uint2(
-            pixel_coords.x - pixel_stride_coords.x,
-            pixel_coords.y - pixel_stride_coords.y
-        );
-        const uint2 sample_coords[4] = {
-            top_left_pixel_coords,
-            make_uint2(min(top_left_pixel_coords.x + config::tile_stride_x, width - 1), top_left_pixel_coords.y),
-            make_uint2(top_left_pixel_coords.x, min(top_left_pixel_coords.y + config::tile_stride_y, height - 1)),
-            make_uint2(min(top_left_pixel_coords.x + config::tile_stride_x, width - 1), min(top_left_pixel_coords.y + config::tile_stride_y, height - 1))
-        };
-
-        const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
-        const int sample_indices[4] = {
-            width * sample_coords[0].y + sample_coords[0].x,
-            width * sample_coords[1].y + sample_coords[1].x,
-            width * sample_coords[2].y + sample_coords[2].x,
-            width * sample_coords[3].y + sample_coords[3].x
-        };
-
+        const int pixel_idx = width * pixel_y + pixel_x;
         if (output_chw) {
             const int n_pixels = width * height;
-            image[pixel_idx] = bilinear_factors.x * image[sample_indices[0]] +
-                               bilinear_factors.y * image[sample_indices[1]] +
-                               bilinear_factors.z * image[sample_indices[2]] +
-                               bilinear_factors.w * image[sample_indices[3]];
-            image[n_pixels + pixel_idx] = bilinear_factors.x * image[n_pixels + sample_indices[0]] +
-                                          bilinear_factors.y * image[n_pixels + sample_indices[1]] +
-                                          bilinear_factors.z * image[n_pixels + sample_indices[2]] +
-                                          bilinear_factors.w * image[n_pixels + sample_indices[3]];
-            image[2 * n_pixels + pixel_idx] = bilinear_factors.x * image[2 * n_pixels + sample_indices[0]] +
-                                              bilinear_factors.y * image[2 * n_pixels + sample_indices[1]] +
-                                              bilinear_factors.z * image[2 * n_pixels + sample_indices[2]] +
-                                              bilinear_factors.w * image[2 * n_pixels + sample_indices[3]];
+            image[pixel_idx] = __saturatef(interpolated_rgb.x);
+            image[n_pixels + pixel_idx] = __saturatef(interpolated_rgb.y);
+            image[2 * n_pixels + pixel_idx] = __saturatef(interpolated_rgb.z);
         } else {
             const int base_idx = 3 * pixel_idx;
-            image[base_idx] = bilinear_factors.x * image[3 * sample_indices[0]] +
-                              bilinear_factors.y * image[3 * sample_indices[1]] +
-                              bilinear_factors.z * image[3 * sample_indices[2]] +
-                              bilinear_factors.w * image[3 * sample_indices[3]];
-            image[base_idx + 1] = bilinear_factors.x * image[3 * sample_indices[0] + 1] +
-                                  bilinear_factors.y * image[3 * sample_indices[1] + 1] +
-                                  bilinear_factors.z * image[3 * sample_indices[2] + 1] +
-                                  bilinear_factors.w * image[3 * sample_indices[3] + 1];
-            image[base_idx + 2] = bilinear_factors.x * image[3 * sample_indices[0] + 2] +
-                                  bilinear_factors.y * image[3 * sample_indices[1] + 2] +
-                                  bilinear_factors.z * image[3 * sample_indices[2] + 2] +
-                                  bilinear_factors.w * image[3 * sample_indices[3] + 2];
+            image[base_idx] = __saturatef(interpolated_rgb.x);
+            image[base_idx + 1] = __saturatef(interpolated_rgb.y);
+            image[base_idx + 2] = __saturatef(interpolated_rgb.z);
         }
     }
+
+
+    template<uint8_t cam_idx>
+    __global__ void __launch_bounds__(config::block_size_blur_blended) bilinear_interpolation_blended(
+        float* image,
+        const uint32_t* visibility_mask,
+        const uint* tile_index_map,
+        const uint tile_offset,
+        const uint width,
+        const uint height,
+        const uint grid_width,
+        const bool output_chw
+    ) {
+        const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+        const uint group_index = block.group_index().x + tile_offset;
+        const uint true_group_index = tile_index_map[group_index];
+        const uint large_tile_index = true_group_index / config::num_small_tiles_per_large_tile;
+        const uint subtile_index = true_group_index % config::num_small_tiles_per_large_tile;
+        const dim3 large_tile_index_2d(large_tile_index % grid_width, large_tile_index / grid_width, 0);
+        const dim3 subtile_index_2d(subtile_index % config::tile_stride_x, subtile_index / config::tile_stride_y, 0);
+
+        const dim3 thread_index = block.thread_index();
+        const uint thread_rank = block.thread_rank();
+        int base_pixel_x = large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small;
+        int base_pixel_y = large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small;
+
+        // We get one sample below/right of the tile boundary
+        constexpr const int num_sample_points_x = config::tile_width_small / config::tile_stride_x + 1;
+        constexpr const int num_sample_points_y = config::tile_height_small / config::tile_stride_y + 1;
+        constexpr const int num_sample_points = num_sample_points_x * num_sample_points_y;
+        constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur_blended - 1) / config::block_size_blur_blended; // ceil division
+        __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
+
+        // Collaborative loading of sample points
+        for (int i = 0; i < n_iters_loading; i++) {
+            block.sync();
+            const int current_fetch_idx = thread_rank + i * config::block_size_blur_blended;
+            if (current_fetch_idx < num_sample_points) {
+                int sample_x = current_fetch_idx % num_sample_points_x;
+                int sample_y = current_fetch_idx / num_sample_points_x;
+                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
+                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+
+                const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
+                const int mask_byte_idx = sample_tile_idx / 32;
+                const int mask_bit_idx = sample_tile_idx % 32;
+                if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) {
+                    // Clamp to nearest valid pixel within the tile boundary if outside the image boundary; this is to avoid artifacts from sampling black pixels outside the image
+                    int clamped_pixel_x = clamp(pixel_x,
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large),
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large + config::tile_width_large - config::tile_stride_x));
+                    int clamped_pixel_y = clamp(pixel_y,
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large),
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large + config::tile_height_large - config::tile_stride_y));
+                    sample_points[sample_y][sample_x] = sample_rgb(image, clamped_pixel_x, clamped_pixel_y, width, height, output_chw);
+                } else {
+                    sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+                }
+            }
+            block.sync();
+        }
+
+        // Sample idx of top left pixel
+        int base_sample_x = thread_index.x / config::tile_stride_x;
+        int base_sample_y = thread_index.y / config::tile_stride_y;
+
+        int pixel_x = large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small + thread_index.x;
+        int pixel_y = large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small + thread_index.y;
+        const bool inside = pixel_x < width && pixel_y < height;
+        if (!inside) return;
+
+        float3 interpolated_rgb = make_float3(0.0f);
+        uint x_mod = thread_index.x % config::tile_stride_x;
+        uint y_mod = thread_index.y % config::tile_stride_y;
+        float x_frac = float(x_mod) / float(config::tile_stride_x);
+        float y_frac = float(y_mod) / float(config::tile_stride_y);
+
+        if ((thread_index.x % config::tile_stride_x) == 0 && (thread_index.y % config::tile_stride_y) == 0) {
+            // Sample position, value already set in image
+            return;
+        } else if ((thread_index.x % config::tile_stride_x) == 0) {  // x is directly on the sample
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x] * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x] * y_frac;
+        } else if ((thread_index.y % config::tile_stride_y) == 0) {  // y is directly on the sample
+            interpolated_rgb += sample_points[base_sample_y][base_sample_x    ] * (1.0f - x_frac);
+            interpolated_rgb += sample_points[base_sample_y][base_sample_x + 1] * x_frac;
+        } else {
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x    ] * (1.0f - x_frac) * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y    ][base_sample_x + 1] * x_frac          * (1.0f - y_frac);
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x    ] * (1.0f - x_frac) * y_frac;
+            interpolated_rgb += sample_points[base_sample_y + 1][base_sample_x + 1] * x_frac          * y_frac;
+        }
+
+        // Determine blending factor
+        const float2 dist_from_gaze = c_gaze_position_cuda[cam_idx] - make_float2(pixel_x, pixel_y);
+        const float blend_factor = clamp(
+                (length(dist_from_gaze) - config::blend_radius - config::tile_width_large)
+                / (config::blend_width - config::tile_width_large),
+                0.0f, 1.0f
+        );
+
+        float3 center_rgb = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+        const int pixel_idx = width * pixel_y + pixel_x;
+        if (blend_factor > 0.0f) {
+            if (output_chw) {
+                const int n_pixels = width * height;
+                image[pixel_idx] = __saturatef(interpolated_rgb.x * blend_factor + center_rgb.x * (1.0f - blend_factor));
+                image[n_pixels + pixel_idx] = __saturatef(interpolated_rgb.y * blend_factor + center_rgb.y * (1.0f - blend_factor));
+                image[2 * n_pixels + pixel_idx] = __saturatef(interpolated_rgb.z * blend_factor + center_rgb.z * (1.0f - blend_factor));
+            } else {
+                const int base_idx = 3 * pixel_idx;
+                image[base_idx] = __saturatef(interpolated_rgb.x * blend_factor + center_rgb.x * (1.0f - blend_factor));
+                image[base_idx + 1] = __saturatef(interpolated_rgb.y * blend_factor + center_rgb.y * (1.0f - blend_factor));
+                image[base_idx + 2] = __saturatef(interpolated_rgb.z * blend_factor + center_rgb.z * (1.0f - blend_factor));
+            }
+        }
+    }
+
 
     __global__ void __launch_bounds__(config::block_size_blur) interpolate_and_blur(
         float* image_blurred,
@@ -300,8 +427,7 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         int base_pixel_x = large_tile_index_2d.x * config::tile_width_large + subtile_index_2d.x * config::tile_width_small - config::tile_stride_x;
         int base_pixel_y = large_tile_index_2d.y * config::tile_height_large + subtile_index_2d.y * config::tile_height_small - config::tile_stride_y;
 
-        // We get one sample above/below/left/right of the tile boundary; with the number of samples in the tile
-        //   boundary being equal to the number of pixels in a full-resolution tile
+        // We get one sample above/below/left/right of the tile boundary
         constexpr const int num_sample_points_x = config::tile_width_small / config::tile_stride_x + 2;
         constexpr const int num_sample_points_y = config::tile_height_small / config::tile_stride_y + 2;
         constexpr const int num_sample_points = num_sample_points_x * num_sample_points_y;
