@@ -110,7 +110,6 @@ void htgs_foveated::rasterization::inference(
     char* per_tile_buffers_blob = buffers.per_tile_buffers_func(required<PerTileBuffers>(n_tiles_large));
     PerTileBuffers per_tile_buffers = PerTileBuffers::from_blob(per_tile_buffers_blob, n_tiles_large);
 
-    // TODO: This is an overallocation; should be optimized to use num_active_tiles
     char* per_sub_tile_buffers_blob = buffers.per_subtile_buffers_func(required<PerSubTileBuffers>(n_tiles));
     PerSubTileBuffers per_sub_tile_buffers = PerSubTileBuffers::from_blob(per_sub_tile_buffers_blob, n_tiles);
 
@@ -164,7 +163,6 @@ void htgs_foveated::rasterization::inference(
     cudaMemcpy(&num_active_tiles, per_tile_buffers.tile_index_map_offsets + n_tiles_large - 1, sizeof(uint), cudaMemcpyDeviceToHost);
     CHECK_CUDA(config::debug_inference, "Fetch num_active_tiles")
 
-    // TODO: Test performance using cub::DevicePartition::If (for three-partition case)
     cub::DeviceRadixSort::SortPairs(
         per_sub_tile_buffers.cub_workspace, per_sub_tile_buffers.cub_workspace_size,
         reinterpret_cast<uint8_t*>(per_sub_tile_buffers.tile_type), reinterpret_cast<uint8_t*>(per_sub_tile_buffers.tile_type_partitioned),

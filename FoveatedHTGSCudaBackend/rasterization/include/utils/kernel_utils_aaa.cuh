@@ -251,7 +251,7 @@ __device__ inline bool transform_and_cull_aaa(
     // anti-aliasing filter
     constexpr float kernel_size = 0.3f;
     const float max_focal = fmaxf(focal_x, focal_y);
-    const float filter_scale_view = z / max_focal;
+    const float filter_scale_view = z / max_focal; // can be negative but it's fine as only the squared value is used
     const float filter_variance_view = filter_scale_view * filter_scale_view * kernel_size;
     const float3 original_variance = original_scale * original_scale;
     const float3 variance = original_variance + filter_variance_view;
@@ -315,7 +315,6 @@ __device__ inline bool transform_and_cull_aaa(
         min(grid_height, static_cast<uint>(max(0, __float2int_ru((center.y + extent.y) / tile_height)))) // y_max
     );
 
-    // TODO: Template foveation radius
     const int foveation_diameter_tiles = 2 * foveation_radius_tiles;
     const int2 mask_top_left = make_int2(
         gaze_position.x - foveation_radius_tiles,
@@ -343,8 +342,6 @@ __device__ inline bool transform_and_cull_aaa(
     // n_tiles = area(D) + area(A) - area(B) - area(C)
     // This may overestimate the actual amount (as tiles masked by the render mask are not excluded from the fovea mask)
     //   but this is acceptable as it only leads to some redundant work
-    // TODO: We could compare performance with re-calculating the summed area tables each frame
-    // TODO: On modern GPUs, atomic adds are apparently very performant, so we could try instance creation that way, and compare performance
     n_touched_tiles = render_mask_area_table[area_table_indices.w]
                     + render_mask_area_table[area_table_indices.x]
                     - render_mask_area_table[area_table_indices.y]
