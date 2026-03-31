@@ -694,6 +694,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery_left, block_blur, 0, blend_periphery_stream_left>>>(
                         image_left_final,
                         image_left,
+                        masks_left.visibility_mask,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
                         partition_ranges_cpu_left.periphery_tiles_range.x,
                         intrinsics_left.width,
@@ -709,6 +710,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery_right, block_blur, 0, blend_periphery_stream_right>>>(
                         image_right_final,
                         image_right,
+                        masks_right.visibility_mask,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,
                         partition_ranges_cpu_right.periphery_tiles_range.x,
                         intrinsics_right.width,
@@ -725,6 +727,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blended_left, block, 0, blend_blended_tiles_stream_left>>>(
                         image_left_final,
                         image_left,
+                        masks_left.visibility_mask,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
                         partition_ranges_cpu_left.blended_tiles_range.x,
                         intrinsics_left.width,
@@ -741,6 +744,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     kernels::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blended_right, block, 0, blend_blended_tiles_stream_right>>>(
                         image_right_final,
                         image_right,
+                        masks_right.visibility_mask,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,
                         partition_ranges_cpu_right.blended_tiles_range.x,
                         intrinsics_right.width,

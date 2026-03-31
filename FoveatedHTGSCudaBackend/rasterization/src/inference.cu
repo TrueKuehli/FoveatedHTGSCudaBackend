@@ -403,6 +403,7 @@ void htgs_foveated::rasterization::inference(
                 kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery, block_blur, 0, blend_periphery_stream>>>(
                     image_final,
                     image,
+                    masks.visibility_mask,
                     per_sub_tile_buffers.tile_index_map_partitioned,
                     partition_ranges_cpu.periphery_tiles_range.x,
                     intrinsics.width,
@@ -420,6 +421,7 @@ void htgs_foveated::rasterization::inference(
                 kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blended, block, 0, blend_blended_tiles_stream>>>(
                     image_final,
                     image,
+                    masks.visibility_mask,
                     per_sub_tile_buffers.tile_index_map_partitioned,
                     partition_ranges_cpu.blended_tiles_range.x,
                     intrinsics.width,

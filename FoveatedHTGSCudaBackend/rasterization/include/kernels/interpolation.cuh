@@ -135,6 +135,7 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
     __global__ void __launch_bounds__(config::block_size_blur) interpolate_and_blur(
         float* image_blurred,
         const float* image,
+        const uint32_t* visibility_mask,
         const uint* tile_index_map,
         const uint tile_offset,
         const uint width,
@@ -171,7 +172,22 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
                 int sample_y = current_fetch_idx / num_sample_points_x;
                 int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
                 int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
-                sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+
+                const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
+                const int mask_byte_idx = sample_tile_idx / 32;
+                const int mask_bit_idx = sample_tile_idx % 32;
+                if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) {
+                    // Clamp to nearest valid pixel within the tile boundary if outside the image boundary; this is to avoid artifacts from sampling black pixels outside the image
+                    int clamped_pixel_x = clamp(pixel_x,
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large),
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large + config::tile_width_large - config::tile_stride_x));
+                    int clamped_pixel_y = clamp(pixel_y,
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large),
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large + config::tile_height_large - config::tile_stride_y));
+                    sample_points[sample_y][sample_x] = sample_rgb(image, clamped_pixel_x, clamped_pixel_y, width, height, output_chw);
+                } else {
+                    sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+                }
             }
             block.sync();
         }
@@ -262,6 +278,7 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
     __global__ void __launch_bounds__(config::block_size_blur_blended) interpolate_and_blur_blended(
         float* image_blurred,
         const float* image,
+        const uint32_t* visibility_mask,
         const uint* tile_index_map,
         const uint tile_offset,
         const uint width,
@@ -300,7 +317,22 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
                 int sample_y = current_fetch_idx / num_sample_points_x;
                 int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
                 int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
-                sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+
+                const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
+                const int mask_byte_idx = sample_tile_idx / 32;
+                const int mask_bit_idx = sample_tile_idx % 32;
+                if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) {
+                    // Clamp to nearest valid pixel within the tile boundary if outside the image boundary; this is to avoid artifacts from sampling black pixels outside the image
+                    int clamped_pixel_x = clamp(pixel_x,
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large),
+                            static_cast<int>(large_tile_index_2d.x * config::tile_width_large + config::tile_width_large - config::tile_stride_x));
+                    int clamped_pixel_y = clamp(pixel_y,
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large),
+                            static_cast<int>(large_tile_index_2d.y * config::tile_height_large + config::tile_height_large - config::tile_stride_y));
+                    sample_points[sample_y][sample_x] = sample_rgb(image, clamped_pixel_x, clamped_pixel_y, width, height, output_chw);
+                } else {
+                    sample_points[sample_y][sample_x] = sample_rgb(image, pixel_x, pixel_y, width, height, output_chw);
+                }
             }
             block.sync();
         }
