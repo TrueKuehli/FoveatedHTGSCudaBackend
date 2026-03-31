@@ -7,7 +7,7 @@
 
 namespace htgs_foveated::rasterization::config {
     // debugging constants
-    DEF bool debug_inference = true;
+    DEF bool debug_inference = false;
     
     // rendering constants
     DEF float transmittance_threshold = 1e-4f;
