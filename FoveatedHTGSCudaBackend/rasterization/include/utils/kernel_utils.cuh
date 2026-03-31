@@ -303,7 +303,9 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
         dot(c_VPR_inv[cam_idx][2], pixel_coords)
     ));
 
-    // TODO: Test if branching is faster (since that could save some computations for any grid cells that are fully below the horizon)
+    // Early exit for pixels >10% below the horizon
+    if (pixel_coords_transformed.y > 0.1f) return make_float3(0.0f, 0.0f, 0.0f);
+
     auto [x, y, z] = normalize(pixel_coords_transformed);
     const float xx = x * x, yy = y * y, zz = z * z;
     const float xy = x * y, xz = x * z, yz = y * z;
@@ -336,8 +338,7 @@ __forceinline__ __device__ float3 eval_sh_background_model(const float pixel_x, 
         __saturatef(result.y),
         __saturatef(result.z)
     );
-    return pixel_coords_transformed.y > 0.1f ? make_float3(0.0f, 0.0f, 0.0f) :
-        (pixel_coords_transformed.y > 0.0f ? (1.0f - pixel_coords_transformed.y / 0.1f) * color : color);
+    return pixel_coords_transformed.y > 0.0f ? (1.0f - pixel_coords_transformed.y / 0.1f) * color : color;
 }
 
 
