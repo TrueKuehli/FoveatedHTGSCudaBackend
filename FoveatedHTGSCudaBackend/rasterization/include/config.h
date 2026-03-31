@@ -44,9 +44,9 @@ namespace htgs_foveated::rasterization::config {
     DEF int block_size_create_instances = 256;
     DEF int block_size_extract_instance_ranges = 256;
     DEF int block_size_get_partition_ranges = 256;
-    DEF int block_size_blend = tile_width_small * tile_height_small;
-    DEF int block_size_blur = 256;
-    DEF int block_size_blur_blended = 64;
+    DEF int block_size_blend = tile_width_small * tile_height_small;  // 64
+    DEF int block_size_blur = tile_width_large * tile_height_large;  // 256
+    DEF int block_size_blur_blended = tile_width_small * tile_height_small; // 64
 }
 
 namespace config = htgs_foveated::rasterization::config;

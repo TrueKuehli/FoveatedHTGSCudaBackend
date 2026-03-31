@@ -88,6 +88,7 @@ void htgs_foveated::rasterization::inference(
     const dim3 grid_large(div_round_up(intrinsics.width, config::tile_width_large), div_round_up(intrinsics.height, config::tile_height_large), 1);
     const dim3 grid(grid_large.x * config::tile_stride_x, grid_large.y * config::tile_stride_y, 1);
     const dim3 block(config::tile_width_small, config::tile_height_small, 1);
+    const dim3 block_blur(config::tile_width_large, config::tile_height_large, 1);
     const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
     const int n_tiles_large = grid_large.x * grid_large.y;
     const int n_tiles = grid.x * grid.y;
@@ -396,17 +397,10 @@ void htgs_foveated::rasterization::inference(
         }
 
         if (blur_periphery) {
-            dim3 blend_grid_blur = blend_grid_periphery;
-            dim3 blend_grid_blur_blended = blend_grid_blended;
-            blend_grid_blur.y = config::tile_stride_x;
-            blend_grid_blur.z = config::tile_stride_y;
-            blend_grid_blur_blended.y = config::tile_stride_x;
-            blend_grid_blur_blended.z = config::tile_stride_y;
-
             if (num_tiles_periphery > 0) {
                 // Wait for blended tiles blending to be done
                 if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream, blend_done.blended, 0);
-                kernels::interpolation::interpolate_and_blur<<<blend_grid_blur, block, 0, blend_periphery_stream>>>(
+                kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery, block_blur, 0, blend_periphery_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
@@ -423,7 +417,7 @@ void htgs_foveated::rasterization::inference(
                 // Wait for fovea + periphery blending to be done
                 if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.fovea, 0);
                 if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream, blend_done.periphery, 0);
-                kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended, half_block, 0, blend_blended_tiles_stream>>>(
+                kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blended, block, 0, blend_blended_tiles_stream>>>(
                     image_final,
                     image,
                     per_sub_tile_buffers.tile_index_map_partitioned,
