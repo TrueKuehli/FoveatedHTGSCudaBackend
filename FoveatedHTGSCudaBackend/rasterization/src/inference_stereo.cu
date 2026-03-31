@@ -105,13 +105,14 @@ void htgs_foveated::rasterization::inference_stereo(
     const dim3 grid_left(grid_left_large.x * config::tile_stride_x, grid_left_large.y * config::tile_stride_y, 1);
     const dim3 grid_right(grid_right_large.x * config::tile_stride_x, grid_right_large.y * config::tile_stride_y, 1);
     const dim3 block(config::tile_width_small, config::tile_height_small, 1);
+    const dim3 block_blur(config::tile_width_large, config::tile_height_large, 1);
     const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
     const int n_tiles_large_left = grid_left_large.x * grid_left_large.y;
     const int n_tiles_left = grid_left.x * grid_left.y;
     const int n_tiles_large_right = grid_right_large.x * grid_right_large.y;
     const int n_tiles_right = grid_right.x * grid_right.y;
-    const int end_bit_left = extract_end_bit(n_tiles_left);
-    const int end_bit_right = extract_end_bit(n_tiles_right);
+    const int end_bit_left = extract_end_bit(n_tiles_left + 1);
+    const int end_bit_right = extract_end_bit(n_tiles_right + 1);
 
     // Round gaze to nearest large tile (top left corner of tile)
     const int2 gaze_position_left_tiles_int = make_int2(
@@ -687,23 +688,10 @@ void htgs_foveated::rasterization::inference_stereo(
             }
 
             if (blur_periphery) {
-                dim3 blend_grid_blur_left = blend_grid_periphery_left;
-                dim3 blend_grid_blur_right = blend_grid_periphery_right;
-                dim3 blend_grid_blur_blended_left = blend_grid_blended_left;
-                dim3 blend_grid_blur_blended_right = blend_grid_blended_right;
-                blend_grid_blur_left.y = config::tile_stride_x;
-                blend_grid_blur_left.z = config::tile_stride_y;
-                blend_grid_blur_right.y = config::tile_stride_x;
-                blend_grid_blur_right.z = config::tile_stride_y;
-                blend_grid_blur_blended_left.y = config::tile_stride_x;
-                blend_grid_blur_blended_left.z = config::tile_stride_y;
-                blend_grid_blur_blended_right.y = config::tile_stride_x;
-                blend_grid_blur_blended_right.z = config::tile_stride_y;
-
                 if (num_tiles_periphery_left > 0) {
                     // Wait for blended tiles blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_left, blend_done[0].blended, 0);
-                    kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_left, block, 0, blend_periphery_stream_left>>>(
+                    kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery_left, block_blur, 0, blend_periphery_stream_left>>>(
                         image_left_final,
                         image_left,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
@@ -718,7 +706,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 if (num_tiles_periphery_right > 0) {
                     // Wait for blended tiles blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_periphery_stream_right, blend_done[1].blended, 0);
-                    kernels::interpolation::interpolate_and_blur<<<blend_grid_blur_right, block, 0, blend_periphery_stream_right>>>(
+                    kernels::interpolation::interpolate_and_blur<<<blend_grid_periphery_right, block_blur, 0, blend_periphery_stream_right>>>(
                         image_right_final,
                         image_right,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,
@@ -734,7 +722,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     // Wait for fovea + periphery blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].fovea, 0);
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_left, blend_done[0].periphery, 0);
-                    kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blur_blended_left, half_block, 0, blend_blended_tiles_stream_left>>>(
+                    kernels::interpolation::interpolate_and_blur_blended<0><<<blend_grid_blended_left, block, 0, blend_blended_tiles_stream_left>>>(
                         image_left_final,
                         image_left,
                         per_sub_tile_buffers_left.tile_index_map_partitioned,
@@ -750,7 +738,7 @@ void htgs_foveated::rasterization::inference_stereo(
                     // Wait for fovea + periphery blending to be done
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].fovea, 0);
                     if constexpr (!config::debug_inference) cudaStreamWaitEvent(blend_blended_tiles_stream_right, blend_done[1].periphery, 0);
-                    kernels::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blur_blended_right, half_block, 0, blend_blended_tiles_stream_right>>>(
+                    kernels::interpolation::interpolate_and_blur_blended<1><<<blend_grid_blended_right, block, 0, blend_blended_tiles_stream_right>>>(
                         image_right_final,
                         image_right,
                         per_sub_tile_buffers_right.tile_index_map_partitioned,
