@@ -22,8 +22,8 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
     const torch::Tensor& VPR_inv,
     const torch::Tensor& cam_position,
     const torch::Tensor& gaze_position,
-    const torch::Tensor& render_mask,
-    const torch::Tensor& render_mask_area_table,
+    const torch::Tensor& visibility_mask,
+    const torch::Tensor& visibility_mask_area_table,
     const torch::Tensor& fovea_mask_area_table,
     const torch::Tensor& background_model_data,
     const int background_model_type,
@@ -59,8 +59,8 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
         center_y
     };
     const Masks masks = {
-        render_mask.data_ptr<uint>(),
-        render_mask_area_table.data_ptr<uint>(),
+        visibility_mask.data_ptr<uint>(),
+        visibility_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>()
     };
     const BackgroundModel bg_model = {

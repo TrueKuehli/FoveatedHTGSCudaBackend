@@ -25,7 +25,7 @@ namespace htgs_foveated::visualization {
         std::function<char* (size_t)> per_subtile_buffers_func,
         float* image,
         const float2* gaze_position,
-        const uint* render_mask,
+        const uint* visibility_mask,
         const int width,
         const int height,
         const bool to_chw);

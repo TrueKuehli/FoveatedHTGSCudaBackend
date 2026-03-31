@@ -36,7 +36,7 @@ torch::Tensor htgs_foveated::visualization::visualize_gaze_wrapper(
 
 torch::Tensor htgs_foveated::visualization::visualize_tile_boundaries_wrapper(
     const torch::Tensor& image,
-    const torch::Tensor& render_mask,
+    const torch::Tensor& visibility_mask,
     const torch::Tensor& gaze_position,
     const bool to_chw
 ) {
@@ -54,7 +54,7 @@ torch::Tensor htgs_foveated::visualization::visualize_tile_boundaries_wrapper(
         per_subtile_buffers_func,
         image.data_ptr<float>(),
         reinterpret_cast<const float2*>(gaze_position.contiguous().data_ptr<float>()),
-        render_mask.data_ptr<uint>(),
+        visibility_mask.data_ptr<uint>(),
         width,
         height,
         to_chw

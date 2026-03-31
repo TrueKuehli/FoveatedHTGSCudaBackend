@@ -134,7 +134,7 @@ void htgs_foveated::rasterization::inference(
             <<<div_round_up(n_tiles_large, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
-        masks.render_mask,
+        masks.visibility_mask,
         gaze_position_tiles,
         n_tiles_large,
         grid_large.x
@@ -204,7 +204,7 @@ void htgs_foveated::rasterization::inference(
         per_primitive_buffers.VPMT4,
         per_primitive_buffers.MT3,
         per_primitive_buffers.rgba,
-        masks.render_mask_area_table,
+        masks.visibility_mask_area_table,
         masks.fovea_mask_area_table,
         n_primitives,
         grid_large.x,
@@ -258,7 +258,7 @@ void htgs_foveated::rasterization::inference(
             per_primitive_buffers.screen_bounds,
             per_instance_buffers.keys.Current(),
             per_instance_buffers.primitive_indices.Current(),
-            masks.render_mask,
+            masks.visibility_mask,
             gaze_position_tiles,
             grid_large.x,
             n_primitives

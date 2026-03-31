@@ -34,8 +34,8 @@ struct Intrinsics {
 };
 
 struct Masks {
-    const uint* render_mask;
-    const uint* render_mask_area_table;
+    const uint* visibility_mask;
+    const uint* visibility_mask_area_table;
     const uint* fovea_mask_area_table;
 };
 

@@ -62,7 +62,7 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
     std::function<char* (size_t)> per_subtile_buffers_func,
     float* image,
     const float2* gaze_position,
-    const uint* render_mask,
+    const uint* visibility_mask,
     const int width,
     const int height,
     const bool to_chw)
@@ -114,7 +114,7 @@ void htgs_foveated::visualization::visualize_tile_boundaries(
                             rasterization::config::block_size_create_tile_index_map>>>
     (
         per_tile_buffers.tile_index_map_num_tiles,
-        render_mask,
+        visibility_mask,
         gaze_position_tiles,
         n_tiles_large,
         grid_large.x

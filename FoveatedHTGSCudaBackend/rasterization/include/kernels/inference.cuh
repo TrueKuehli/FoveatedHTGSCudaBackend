@@ -28,7 +28,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
         float4* primitive_VPMT4,
         float4* primitive_MT3,
         float4* primitive_rgba,
-        const uint* render_mask_area_table,
+        const uint* visibility_mask_area_table,
         const uint* fovea_mask_area_table,
         const uint n_primitives,
         const uint grid_width,
@@ -64,7 +64,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
             const bool culled = transform_and_cull_aaa<cam_idx>(
                 scales, rotations, position_world,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, MT3, opacity,
-                render_mask_area_table, fovea_mask_area_table,
+                visibility_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
                 config::foveation_radius_tiles, gaze_position,
                 width, height, focal_x, focal_y, center_x, center_y,
@@ -79,7 +79,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
             if (transform_and_cull<cam_idx>(
                 scales, rotations, position_world, M3,
                 n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, z, opacity,
-                render_mask_area_table, fovea_mask_area_table,
+                visibility_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
                 config::foveation_radius_tiles, gaze_position,
                 near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier

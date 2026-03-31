@@ -23,8 +23,8 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         const torch::Tensor& VPR_inv_left,
         const torch::Tensor& cam_position_left,
         const torch::Tensor& gaze_position_left,
-        const torch::Tensor& render_mask_left,
-        const torch::Tensor& render_mask_area_table_left,
+        const torch::Tensor& visibility_mask_left,
+        const torch::Tensor& visibility_mask_area_table_left,
         const torch::Tensor& fovea_mask_area_table_left,
         const torch::Tensor& background_model_data_left,
         const int background_model_type_left,
@@ -45,8 +45,8 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         const torch::Tensor& VPR_inv_right,
         const torch::Tensor& cam_position_right,
         const torch::Tensor& gaze_position_right,
-        const torch::Tensor& render_mask_right,
-        const torch::Tensor& render_mask_area_table_right,
+        const torch::Tensor& visibility_mask_right,
+        const torch::Tensor& visibility_mask_area_table_right,
         const torch::Tensor& fovea_mask_area_table_right,
         const torch::Tensor& background_model_data_right,
         const int background_model_type_right,
@@ -98,13 +98,13 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
         center_y_right
     };
     const Masks masks_left = {
-        render_mask_left.data_ptr<uint>(),
-        render_mask_area_table_left.data_ptr<uint>(),
+        visibility_mask_left.data_ptr<uint>(),
+        visibility_mask_area_table_left.data_ptr<uint>(),
         fovea_mask_area_table_left.data_ptr<uint>()
     };
     const Masks masks_right = {
-        render_mask_right.data_ptr<uint>(),
-        render_mask_area_table_right.data_ptr<uint>(),
+        visibility_mask_right.data_ptr<uint>(),
+        visibility_mask_area_table_right.data_ptr<uint>(),
         fovea_mask_area_table_right.data_ptr<uint>()
     };
 

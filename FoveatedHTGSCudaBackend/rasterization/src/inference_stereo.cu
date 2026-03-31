@@ -182,7 +182,7 @@ void htgs_foveated::rasterization::inference_stereo(
             <<<div_round_up(n_tiles_large_left, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_left_stream>>>
     (
         per_tile_buffers_left.tile_index_map_num_tiles,
-        masks_left.render_mask,
+        masks_left.visibility_mask,
         gaze_position_left_tiles,
         n_tiles_large_left,
         grid_left_large.x
@@ -193,7 +193,7 @@ void htgs_foveated::rasterization::inference_stereo(
             <<<div_round_up(n_tiles_large_right, config::block_size_create_tile_index_map), config::block_size_create_tile_index_map, 0, preprocess_right_stream>>>
     (
         per_tile_buffers_right.tile_index_map_num_tiles,
-        masks_right.render_mask,
+        masks_right.visibility_mask,
         gaze_position_right_tiles,
         n_tiles_large_right,
         grid_right_large.x
@@ -320,7 +320,7 @@ void htgs_foveated::rasterization::inference_stereo(
         per_primitive_buffers_left.VPMT4,
         per_primitive_buffers_left.MT3,
         per_primitive_buffers_left.rgba,
-        masks_left.render_mask_area_table,
+        masks_left.visibility_mask_area_table,
         masks_left.fovea_mask_area_table,
         n_primitives,
         grid_left_large.x,
@@ -353,7 +353,7 @@ void htgs_foveated::rasterization::inference_stereo(
         per_primitive_buffers_right.VPMT4,
         per_primitive_buffers_right.MT3,
         per_primitive_buffers_right.rgba,
-        masks_right.render_mask_area_table,
+        masks_right.visibility_mask_area_table,
         masks_right.fovea_mask_area_table,
         n_primitives,
         grid_right_large.x,
@@ -439,7 +439,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 per_primitive_buffers_left.screen_bounds,
                 per_instance_buffers_left.keys.Current(),
                 per_instance_buffers_left.primitive_indices.Current(),
-                masks_left.render_mask,
+                masks_left.visibility_mask,
                 gaze_position_left_tiles,
                 grid_left_large.x,
                 n_primitives
@@ -451,7 +451,7 @@ void htgs_foveated::rasterization::inference_stereo(
                 per_primitive_buffers_right.screen_bounds,
                 per_instance_buffers_right.keys.Current(),
                 per_instance_buffers_right.primitive_indices.Current(),
-                masks_right.render_mask,
+                masks_right.visibility_mask,
                 gaze_position_right_tiles,
                 grid_right_large.x,
                 n_primitives

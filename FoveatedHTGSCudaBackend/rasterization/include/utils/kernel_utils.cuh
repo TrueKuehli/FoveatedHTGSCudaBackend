@@ -103,7 +103,7 @@ __forceinline__ __device__ bool transform_and_cull(
     float4& VPMT4,
     float& z,
     float& opacity,
-    const uint* render_mask_area_table,
+    const uint* visibility_mask_area_table,
     const uint* fovea_mask_area_table,
     const uint primitive_idx,
     const uint grid_width,
@@ -191,10 +191,10 @@ __forceinline__ __device__ bool transform_and_cull(
     // n_tiles = area(D) + area(A) - area(B) - area(C)
     // This may overestimate the actual amount (as tiles masked by the render mask are not excluded from the fovea mask)
     //   but this is acceptable as it only leads to some redundant work
-    n_touched_tiles = render_mask_area_table[area_table_indices.w]
-                    + render_mask_area_table[area_table_indices.x]
-                    - render_mask_area_table[area_table_indices.y]
-                    - render_mask_area_table[area_table_indices.z];
+    n_touched_tiles = visibility_mask_area_table[area_table_indices.w]
+                    + visibility_mask_area_table[area_table_indices.x]
+                    - visibility_mask_area_table[area_table_indices.y]
+                    - visibility_mask_area_table[area_table_indices.z];
     if (foveation_table_bounds.y != foveation_table_bounds.x && foveation_table_bounds.w != foveation_table_bounds.z) {
         const uint4 fovea_table_indices = make_uint4(
             foveation_table_bounds.x + (foveation_diameter_tiles + 1) * foveation_table_bounds.z, // A
