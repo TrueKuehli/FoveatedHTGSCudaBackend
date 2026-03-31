@@ -15,16 +15,16 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (instance_idx >= n_instances) return;
         const KeyT instance_tile_idx = instance_keys[instance_idx];
-        if (instance_tile_idx == std::numeric_limits<KeyT>::max()) return;  // Reject non-set keys
         if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
         else {
             const KeyT previous_instance_tile_idx = instance_keys[instance_idx - 1];
             if (instance_tile_idx != previous_instance_tile_idx) {
                 tile_instance_ranges[previous_instance_tile_idx].y = instance_idx;
-                tile_instance_ranges[instance_tile_idx].x = instance_idx;
+                // Don't set the start of the next range for sentinel keys (which are always at the end, so no check necessary for previous_instance_tile_idx)
+                if (instance_tile_idx != std::numeric_limits<KeyT>::max()) tile_instance_ranges[instance_tile_idx].x = instance_idx;
             }
         }
-        if (instance_idx == n_instances - 1) tile_instance_ranges[instance_tile_idx].y = n_instances;
+        if (instance_idx == n_instances - 1 && instance_tile_idx != std::numeric_limits<KeyT>::max()) tile_instance_ranges[instance_tile_idx].y = n_instances;
     }
 
     template __global__ void extract_instance_ranges_cu<uint>(
