@@ -117,7 +117,6 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         // Because the workload differs based on the subpixel (in each 2x2 group of pixels) differs,
         //   we launch four blocks (differentiated by y/z block index) per tile, each responsible
         //   for one of the subpixels
-        // TODO: Compare the performance with 4 (templated) separate kernels
         const cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
         const uint group_index = block.group_index().x + tile_offset;
         const uint true_group_index = tile_index_map[group_index];

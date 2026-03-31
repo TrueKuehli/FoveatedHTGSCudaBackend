@@ -2,9 +2,11 @@
 
 #include "config.h"
 #include "helper_math.h"
+#include "kernels/background_model.cuh"
 #include "utils/kernel_utils.cuh"
 #include "utils/kernel_utils_aaa.cuh"
 #include "utils/rasterization_utils.h"
+#include "utils/sh_utils.cuh"
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 
@@ -94,12 +96,10 @@ namespace htgs_foveated::rasterization::kernels::inference {
         primitive_MT3[primitive_idx] = MT3;
 
         // compute view-dependent color
-        const float3 rgb = convert_sh_to_rgb<false, cam_idx>(
+        const float3 rgb = convert_sh_to_color<cam_idx>(
             sh_0,
             sh_rest,
-            nullptr,
             position_world,
-            n_primitives,
             primitive_idx,
             active_sh_bases,
             total_sh_bases
@@ -243,12 +243,12 @@ namespace htgs_foveated::rasterization::kernels::inference {
             if constexpr (background_model == BackgroundModelType::SH) {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * eval_sh_background_model<cam_idx>(pixel_x, pixel_y);
+                    rgb_pixel += weight_background * background_model::eval_sh_background_model<cam_idx>(pixel_x, pixel_y);
                 }
             } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * eval_tex_background_model<config::environment_map_width, config::environment_map_height, cam_idx>(
+                    rgb_pixel += weight_background * background_model::eval_tex_background_model<config::environment_map_width, config::environment_map_height, cam_idx>(
                         pixel_x, pixel_y, background_model_data
                     );
                 }
