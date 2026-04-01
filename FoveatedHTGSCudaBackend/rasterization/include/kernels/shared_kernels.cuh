@@ -9,7 +9,7 @@
 namespace htgs_foveated::rasterization::kernels::shared {
 
     template <typename KeyT, uint foveation_radius_tiles, uint num_small_tiles, uint8_t cam_idx>
-    __global__ inline void create_instances_cu(
+    __global__ void create_instances_cu(
         const uint* primitive_n_touched_tiles,
         const uint* primitive_offsets,
         const uint4* primitive_screen_bounds,
@@ -48,15 +48,31 @@ namespace htgs_foveated::rasterization::kernels::shared {
         }
     }
 
+
     template <typename KeyT>
     __global__ void extract_instance_ranges_cu(
         const KeyT* instance_keys,
         uint2* tile_instance_ranges,
-        const uint n_instances);
+        const uint n_instances)
+    {
+        const uint instance_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
+        if (instance_idx >= n_instances) return;
+        const KeyT instance_tile_idx = instance_keys[instance_idx];
+        if (instance_idx == 0) tile_instance_ranges[instance_tile_idx].x = 0;
+        else {
+            const KeyT previous_instance_tile_idx = instance_keys[instance_idx - 1];
+            if (instance_tile_idx != previous_instance_tile_idx) {
+                tile_instance_ranges[previous_instance_tile_idx].y = instance_idx;
+                // Don't set the start of the next range for sentinel keys (which are always at the end, so no check necessary for previous_instance_tile_idx)
+                if (instance_tile_idx != std::numeric_limits<KeyT>::max()) tile_instance_ranges[instance_tile_idx].x = instance_idx;
+            }
+        }
+        if (instance_idx == n_instances - 1 && instance_tile_idx != std::numeric_limits<KeyT>::max()) tile_instance_ranges[instance_tile_idx].y = n_instances;
+    }
 
 
     template <int foveation_radius_tiles, int num_small_tiles, uint8_t cam_idx>
-    __global__ inline void fill_tile_index_num_tiles(
+    __global__ void fill_tile_index_num_tiles(
         uint* tile_index_map_num_tiles,
         const uint32_t* visibility_mask,
         const float2 gaze_position_tiles,
@@ -82,7 +98,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
     }
 
     template <int num_small_tiles, int blend_radius_tiles>
-    __global__ inline void build_tile_index_map(
+    __global__ void build_tile_index_map(
         uint* tile_index_map,
         TileType* tile_type_map,
         const uint* tile_index_map_num_tiles,
@@ -126,5 +142,18 @@ namespace htgs_foveated::rasterization::kernels::shared {
         uint2* partition_ranges,
         const TileType* tile_type_map,
         const uint n_tiles
-    );
+    ) {
+        const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
+        if (tile_idx >= n_tiles) return;
+        if (tile_idx == 0) return;
+
+        TileType current_type = tile_type_map[tile_idx];
+        TileType previous_type = tile_type_map[tile_idx - 1];
+        if (tile_idx != 0 && current_type != previous_type) {
+            partition_ranges[static_cast<uint8_t>(current_type)].x = tile_idx;
+            partition_ranges[static_cast<uint8_t>(previous_type)].y = tile_idx;
+        }
+        if (tile_idx == n_tiles - 1) partition_ranges[static_cast<uint8_t>(current_type)].y = n_tiles;
+    }
+
 }

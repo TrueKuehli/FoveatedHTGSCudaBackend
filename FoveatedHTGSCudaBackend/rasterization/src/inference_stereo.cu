@@ -106,7 +106,6 @@ void htgs_foveated::rasterization::inference_stereo(
     const dim3 grid_right(grid_right_large.x * config::tile_stride_x, grid_right_large.y * config::tile_stride_y, 1);
     const dim3 block(config::tile_width_small, config::tile_height_small, 1);
     const dim3 block_blur(config::tile_width_large, config::tile_height_large, 1);
-    const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
     const int n_tiles_large_left = grid_left_large.x * grid_left_large.y;
     const int n_tiles_left = grid_left.x * grid_left.y;
     const int n_tiles_large_right = grid_right_large.x * grid_right_large.y;

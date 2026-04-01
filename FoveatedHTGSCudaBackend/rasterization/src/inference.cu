@@ -89,7 +89,6 @@ void htgs_foveated::rasterization::inference(
     const dim3 grid(grid_large.x * config::tile_stride_x, grid_large.y * config::tile_stride_y, 1);
     const dim3 block(config::tile_width_small, config::tile_height_small, 1);
     const dim3 block_blur(config::tile_width_large, config::tile_height_large, 1);
-    const dim3 half_block(config::tile_width_small / 2, config::tile_height_small / 2, 1);
     const int n_tiles_large = grid_large.x * grid_large.y;
     const int n_tiles = grid.x * grid.y;
     const int end_bit = extract_end_bit(n_tiles + 1);

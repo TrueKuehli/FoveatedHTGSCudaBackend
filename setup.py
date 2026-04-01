@@ -50,7 +50,7 @@ include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
     include_dirs.append(str(extension_root.absolute() / module / 'include'))
 
-cxx_flags, nvcc_flags = ['--std=c++20'], ['-std=c++20']
+cxx_flags, nvcc_flags = ['--std=c++20'], ['-std=c++20', '-rdc=true']
 if ENABLE_NVCC_LINEINFO:
     nvcc_flags.append('-lineinfo')
 
@@ -64,7 +64,8 @@ base_extension = CUDAExtension(
     extra_compile_args={
         'cxx': cxx_flags,
         'nvcc': nvcc_flags
-    }
+    },
+    dlink=True,
 )
 
 fast_inference_extension = CUDAExtension(
@@ -74,7 +75,8 @@ fast_inference_extension = CUDAExtension(
     extra_compile_args={
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
-    }
+    },
+    dlink=True,
 )
 
 stereo_extension = CUDAExtension(
@@ -84,7 +86,8 @@ stereo_extension = CUDAExtension(
     extra_compile_args={
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
-    }
+    },
+    dlink=True,
 )
 
 visualization_extension = CUDAExtension(
@@ -94,7 +97,8 @@ visualization_extension = CUDAExtension(
     extra_compile_args={
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
-    }
+    },
+    dlink=True,
 )
 
 setup(

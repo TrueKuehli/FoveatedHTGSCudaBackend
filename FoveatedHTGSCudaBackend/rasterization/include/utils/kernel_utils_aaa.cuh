@@ -1,7 +1,9 @@
 #pragma once
 
 #include "utils/kernel_utils.cuh"
-#define __FLT_MAX__ 3.402823466e+38f
+#ifndef __FLT_MAX__
+    #define __FLT_MAX__ 3.402823466e+38f
+#endif
 
 
 __device__ inline float max_contrib_plane(

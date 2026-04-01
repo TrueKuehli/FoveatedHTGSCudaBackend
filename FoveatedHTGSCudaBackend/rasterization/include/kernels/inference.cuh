@@ -222,9 +222,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
             // blend core
             float3 rgb_pixel = make_float3(0.0f);
             float transmittance_core = 1.0f;
-            float transmittance_core_blended = 1.0f;
             bool done = false;
-            bool done_blended = false;
             #pragma unroll
             for (int core_idx = 0; core_idx < K && !done; ++core_idx) {
                 const float2 rgba_premultiplied_rg = __half22float2(rgbas_premultiplied_core_rg[core_idx]);
