@@ -1,3 +1,4 @@
+import sys
 from glob import glob
 from pathlib import Path
 
@@ -50,11 +51,12 @@ include_dirs = [str(extension_root.absolute() / 'utils')]
 for module in cuda_modules:
     include_dirs.append(str(extension_root.absolute() / module / 'include'))
 
-cxx_flags, nvcc_flags = ['--std=c++20'], ['-std=c++20', '-rdc=true']
+cxx_flags = ['/std:c++20', '/rdc=true'] if sys.platform == "win32" else ['--std=c++20', '-rdc=true']
+nvcc_flags = ['-std=c++20']
 if ENABLE_NVCC_LINEINFO:
     nvcc_flags.append('-lineinfo')
 
-benchmark_cxx_flags = ['-O3']
+benchmark_cxx_flags = ["/O2"] if sys.platform == "win32" else ["-O3"]
 benchmark_nvcc_flags = ['-O3', '-use_fast_math']
 
 base_extension = CUDAExtension(
@@ -65,7 +67,9 @@ base_extension = CUDAExtension(
         'cxx': cxx_flags,
         'nvcc': nvcc_flags
     },
-    dlink=True,
+    extra_link_args=[
+        "-lcudadevrt",
+    ],
 )
 
 fast_inference_extension = CUDAExtension(
@@ -76,7 +80,9 @@ fast_inference_extension = CUDAExtension(
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
     },
-    dlink=True,
+    extra_link_args=[
+        "-lcudadevrt",
+    ],
 )
 
 stereo_extension = CUDAExtension(
@@ -87,7 +93,9 @@ stereo_extension = CUDAExtension(
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
     },
-    dlink=True,
+    extra_link_args=[
+        "-lcudadevrt",
+    ],
 )
 
 visualization_extension = CUDAExtension(
@@ -98,7 +106,9 @@ visualization_extension = CUDAExtension(
         'cxx': cxx_flags + benchmark_cxx_flags,
         'nvcc': nvcc_flags + benchmark_nvcc_flags
     },
-    dlink=True,
+    extra_link_args=[
+        "-lcudadevrt",
+    ],
 )
 
 setup(

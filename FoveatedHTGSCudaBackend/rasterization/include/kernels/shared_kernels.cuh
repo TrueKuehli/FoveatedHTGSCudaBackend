@@ -4,6 +4,7 @@
 #include "utils/enums.h"
 #include "utils/kernel_utils.cuh"
 #include <cstdint>
+#include <limits>
 
 
 namespace htgs_foveated::rasterization::kernels::shared {

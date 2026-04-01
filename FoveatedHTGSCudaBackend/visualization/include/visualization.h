@@ -2,6 +2,8 @@
 
 
 #include "enums.h"
+#include "helper_math.h"
+
 
 namespace htgs_foveated::visualization {
 
