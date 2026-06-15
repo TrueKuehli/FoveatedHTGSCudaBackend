@@ -67,15 +67,19 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur - 1) / config::block_size_blur; // ceil division
         __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
 
+        // Determine right/down clamping position to avoid sampling outside image boundaries
+        int max_extent_right = (width - base_pixel_x - 1) / config::tile_stride_x;
+        int max_extent_down = (height - base_pixel_y - 1) / config::tile_stride_y;
+
         // Collaborative loading of sample points
         for (int i = 0; i < n_iters_loading; i++) {
             block.sync();
             const int current_fetch_idx = thread_rank + i * config::block_size_blur;
             if (current_fetch_idx < num_sample_points) {
                 int sample_x = current_fetch_idx % num_sample_points_x;
-                int sample_y = current_fetch_idx / num_sample_points_x;
-                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
-                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+                int sample_y = current_fetch_idx / num_sample_points_y;
+                int pixel_x = base_pixel_x + min(sample_x, max_extent_right) * config::tile_stride_x;
+                int pixel_y = base_pixel_y + min(sample_y, max_extent_down) * config::tile_stride_y;
 
                 const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
                 const int mask_byte_idx = sample_tile_idx / 32;
@@ -173,15 +177,19 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur_blended - 1) / config::block_size_blur_blended; // ceil division
         __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
 
+        // Determine right/down clamping position to avoid sampling outside image boundaries
+        int max_extent_right = (width - base_pixel_x - 1) / config::tile_stride_x;
+        int max_extent_down = (height - base_pixel_y - 1) / config::tile_stride_y;
+
         // Collaborative loading of sample points
         for (int i = 0; i < n_iters_loading; i++) {
             block.sync();
             const int current_fetch_idx = thread_rank + i * config::block_size_blur_blended;
             if (current_fetch_idx < num_sample_points) {
                 int sample_x = current_fetch_idx % num_sample_points_x;
-                int sample_y = current_fetch_idx / num_sample_points_x;
-                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
-                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+                int sample_y = current_fetch_idx / num_sample_points_y;
+                int pixel_x = base_pixel_x + min(sample_x, max_extent_right) * config::tile_stride_x;
+                int pixel_y = base_pixel_y + min(sample_y, max_extent_down) * config::tile_stride_y;
 
                 const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
                 const int mask_byte_idx = sample_tile_idx / 32;
@@ -290,15 +298,19 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur - 1) / config::block_size_blur; // ceil division
         __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
 
+        // Determine right/down clamping position to avoid sampling outside image boundaries
+        int max_extent_right = (width - base_pixel_x - 1) / config::tile_stride_x;
+        int max_extent_down = (height - base_pixel_y - 1) / config::tile_stride_y;
+
         // Collaborative loading of sample points
         for (int i = 0; i < n_iters_loading; i++) {
             block.sync();
             const int current_fetch_idx = thread_rank + i * config::block_size_blur;
             if (current_fetch_idx < num_sample_points) {
                 int sample_x = current_fetch_idx % num_sample_points_x;
-                int sample_y = current_fetch_idx / num_sample_points_x;
-                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
-                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+                int sample_y = current_fetch_idx / num_sample_points_y;
+                int pixel_x = base_pixel_x + min(sample_x, max_extent_right) * config::tile_stride_x;
+                int pixel_y = base_pixel_y + min(sample_y, max_extent_down) * config::tile_stride_y;
 
                 const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
                 const int mask_byte_idx = sample_tile_idx / 32;
@@ -434,15 +446,19 @@ namespace htgs_foveated::rasterization::kernels::interpolation {
         constexpr const int n_iters_loading = (num_sample_points + config::block_size_blur_blended - 1) / config::block_size_blur_blended; // ceil division
         __shared__ float3 sample_points[num_sample_points_y][num_sample_points_x];
 
+        // Determine right/down clamping position to avoid sampling outside image boundaries
+        int max_extent_right = (width - base_pixel_x - 1) / config::tile_stride_x;
+        int max_extent_down = (height - base_pixel_y - 1) / config::tile_stride_y;
+
         // Collaborative loading of sample points
         for (int i = 0; i < n_iters_loading; i++) {
             block.sync();
             const int current_fetch_idx = thread_rank + i * config::block_size_blur_blended;
             if (current_fetch_idx < num_sample_points) {
                 int sample_x = current_fetch_idx % num_sample_points_x;
-                int sample_y = current_fetch_idx / num_sample_points_x;
-                int pixel_x = base_pixel_x + sample_x * config::tile_stride_x;
-                int pixel_y = base_pixel_y + sample_y * config::tile_stride_y;
+                int sample_y = current_fetch_idx / num_sample_points_y;
+                int pixel_x = base_pixel_x + min(sample_x, max_extent_right) * config::tile_stride_x;
+                int pixel_y = base_pixel_y + min(sample_y, max_extent_down) * config::tile_stride_y;
 
                 const int sample_tile_idx = pixel_y / config::tile_height_large * grid_width + pixel_x / config::tile_width_large;
                 const int mask_byte_idx = sample_tile_idx / 32;
