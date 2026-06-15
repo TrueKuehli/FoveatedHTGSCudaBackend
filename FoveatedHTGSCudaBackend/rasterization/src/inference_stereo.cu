@@ -767,7 +767,7 @@ void htgs_foveated::rasterization::inference_stereo(
                         grid_left_large.x,
                         to_chw
                     );
-                    CHECK_CUDA(config::debug_inference, "blur (left)")
+                    CHECK_CUDA(config::debug_inference, "interpolate (left)")
                 }
                 if (num_tiles_periphery_right > 0) {
                     // Wait for blended tiles blending to be done
@@ -782,7 +782,7 @@ void htgs_foveated::rasterization::inference_stereo(
                         grid_right_large.x,
                         to_chw
                     );
-                    CHECK_CUDA(config::debug_inference, "blur (right)")
+                    CHECK_CUDA(config::debug_inference, "interpolate (right)")
                 }
                 if (num_tiles_blended_left > 0) {
                     // Wait for fovea + periphery blending to be done
@@ -798,7 +798,7 @@ void htgs_foveated::rasterization::inference_stereo(
                         grid_left_large.x,
                         to_chw
                     );
-                    CHECK_CUDA(config::debug_inference, "blur_blended (left)")
+                    CHECK_CUDA(config::debug_inference, "interpolate_blended (left)")
                 }
                 if (num_tiles_blended_right > 0) {
                     // Wait for fovea + periphery blending to be done
@@ -814,7 +814,7 @@ void htgs_foveated::rasterization::inference_stereo(
                         grid_right_large.x,
                         to_chw
                     );
-                    CHECK_CUDA(config::debug_inference, "blur_blended (right)")
+                    CHECK_CUDA(config::debug_inference, "interpolate_blended (right)")
                 }
             }
 
