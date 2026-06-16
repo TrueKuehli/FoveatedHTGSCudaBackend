@@ -26,7 +26,6 @@ namespace htgs_foveated::rasterization::kernels::inference {
         float4* primitive_VPMT1,
         float4* primitive_VPMT2,
         float4* primitive_VPMT4,
-        float4* primitive_MT3,
         float4* primitive_rgba,
         const uint* visibility_mask_area_table,
         const uint* fovea_mask_area_table,
@@ -56,14 +55,14 @@ namespace htgs_foveated::rasterization::kernels::inference {
         uint n_touched_tiles;
         uint4 screen_bounds;
         float3 u, v, w;
-        float4 VPMT1, VPMT2, VPMT4, MT3;
+        float4 VPMT1, VPMT2, VPMT4;
 
         // transform and cull
         if constexpr (aaa_mode) {
             // improved transform and cull
             const bool culled = transform_and_cull_aaa<cam_idx>(
                 scales, rotations, position_world,
-                n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, MT3, opacity,
+                n_touched_tiles, screen_bounds, u, v, w, VPMT1, VPMT2, VPMT4, opacity,
                 visibility_mask_area_table, fovea_mask_area_table,
                 primitive_idx, grid_width, grid_height, config::tile_width_large, config::tile_height_large,
                 config::foveation_radius_tiles, gaze_position,
@@ -84,7 +83,6 @@ namespace htgs_foveated::rasterization::kernels::inference {
                 config::foveation_radius_tiles, gaze_position,
                 near_plane, far_plane, config::min_alpha_threshold_rcp, scale_modifier
             )) return;
-            MT3 = make_float4(dot(make_float3(M3), u), dot(make_float3(M3), v), dot(make_float3(M3), w), z);
         }
 
         // write intermediate results
@@ -93,7 +91,6 @@ namespace htgs_foveated::rasterization::kernels::inference {
         primitive_VPMT1[primitive_idx] = VPMT1;
         primitive_VPMT2[primitive_idx] = VPMT2;
         primitive_VPMT4[primitive_idx] = VPMT4;
-        primitive_MT3[primitive_idx] = MT3;
 
         // compute view-dependent color
         const float3 rgb = convert_sh_to_color<cam_idx>(
@@ -115,7 +112,6 @@ namespace htgs_foveated::rasterization::kernels::inference {
         const float4* primitive_VPMT1,
         const float4* primitive_VPMT2,
         const float4* primitive_VPMT4,
-        const float4* primitive_MT3,
         const float4* primitive_rgba,
         const float* background_model_data,
         float* image,
@@ -144,7 +140,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
         const float pixel_x = __uint2float_rn(pixel_coords.x);
         const float pixel_y = __uint2float_rn(pixel_coords.y);
         // setup shared memory
-        __shared__ float4 collected_VPMT1[config::block_size_blend], collected_VPMT2[config::block_size_blend], collected_VPMT4[config::block_size_blend], collected_MT3[config::block_size_blend];
+        __shared__ float4 collected_VPMT1[config::block_size_blend], collected_VPMT2[config::block_size_blend], collected_VPMT4[config::block_size_blend];
         __shared__ float3 collected_rgb[config::block_size_blend];
         __shared__ float collected_opacity[config::block_size_blend];
         // initialize local storage
@@ -168,7 +164,6 @@ namespace htgs_foveated::rasterization::kernels::inference {
                 collected_VPMT1[thread_rank] = primitive_VPMT1[primitive_idx];
                 collected_VPMT2[thread_rank] = primitive_VPMT2[primitive_idx];
                 collected_VPMT4[thread_rank] = primitive_VPMT4[primitive_idx];
-                collected_MT3[thread_rank] = primitive_MT3[primitive_idx];
                 const float4 rgba = primitive_rgba[primitive_idx];
                 collected_rgb[thread_rank] = make_float3(rgba.x, rgba.y, rgba.z);
                 collected_opacity[thread_rank] = rgba.w;
@@ -191,8 +186,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
                     if (numerator_rho2 > config::max_cutoff_sq * denominator) continue; // considering opacity requires log/sqrt -> slower
                     const float denominator_rcp = 1.0f / denominator;
                     const float3 eval_point_diag = cross(d, m) * denominator_rcp;
-                    const float4 MT3 = collected_MT3[j];
-                    float depth = dot(make_float3(MT3), eval_point_diag) + MT3.w;
+                    float depth = dot(make_float3(VPMT4), eval_point_diag) + VPMT4.w;
                     const float G = expf(-0.5f * numerator_rho2 * denominator_rcp);
                     const float alpha = fminf(collected_opacity[j] * G, config::max_fragment_alpha);
                     if (alpha < config::min_alpha_threshold) continue;

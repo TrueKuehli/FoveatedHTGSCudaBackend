@@ -220,7 +220,6 @@ __device__ inline bool transform_and_cull_aaa(
     float4& VPMT1,
     float4& VPMT2,
     float4& VPMT4,
-    float4& MT3,
     float& opacity,
     const uint* visibility_mask_area_table,
     const uint* fovea_mask_area_table,
@@ -305,9 +304,8 @@ __device__ inline bool transform_and_cull_aaa(
     const float4 M2 = c_M[cam_idx][1];
     const float4 MT1 = make_float4(dot(make_float3(M1), u), dot(make_float3(M1), v), dot(make_float3(M1), w), dot(make_float3(M1), position_world) + M1.w);
     const float4 MT2 = make_float4(dot(make_float3(M2), u), dot(make_float3(M2), v), dot(make_float3(M2), w), dot(make_float3(M2), position_world) + M2.w);
-    MT3 = make_float4(dot(make_float3(M3), u), dot(make_float3(M3), v), dot(make_float3(M3), w), z);
     float2 center, extent;
-    compute_aabb_view(MT1, MT2, MT3, focal_x, focal_y, center_x, center_y, rho_cutoff, center, extent);
+    compute_aabb_view(MT1, MT2, VPMT4, focal_x, focal_y, center_x, center_y, rho_cutoff, center, extent);
 
     // compute screen-space bounding box in pixel coordinates
     screen_bounds = make_uint4(

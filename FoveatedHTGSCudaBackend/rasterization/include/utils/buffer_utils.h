@@ -30,7 +30,6 @@ namespace htgs_foveated::rasterization {
         float4* VPMT1;
         float4* VPMT2;
         float4* VPMT4;
-        float4* MT3;
         float4* rgba = nullptr;
         bool* rgb_clamp_info = nullptr;
 
@@ -42,7 +41,6 @@ namespace htgs_foveated::rasterization {
             obtain(blob, buffers.VPMT1, n_primitives, 128);
             obtain(blob, buffers.VPMT2, n_primitives, 128);
             obtain(blob, buffers.VPMT4, n_primitives, 128);
-            obtain(blob, buffers.MT3, n_primitives, 128);
             if (store_rgba) obtain(blob, buffers.rgba, n_primitives, 128);
             if (store_rgb_clamp_info) obtain(blob, buffers.rgb_clamp_info, n_primitives * 3, 128);
             cub::DeviceScan::InclusiveSum(
