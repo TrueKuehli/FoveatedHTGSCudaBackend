@@ -2,6 +2,7 @@ import sys
 from glob import glob
 from pathlib import Path
 
+import torch.version
 from setuptools import setup
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 
@@ -9,7 +10,8 @@ __author__ = 'Timon Scholz & Florian Hahlbohm'
 __description__ = 'Provides various CUDA-accelerated functionality for the foveated HTGS method.'
 
 ENABLE_NVCC_LINEINFO = True  # set to True for profiling kernels with Nsight Compute (overhead is minimal)
-
+CUDA_VERSION = torch.version.cuda
+assert CUDA_VERSION is not None, 'Installed PyTorch version does not support CUDA'
 
 module_root = Path(__file__).parent.relative_to(Path.cwd())
 extension_name = module_root.absolute().name
@@ -55,6 +57,8 @@ cxx_flags = ['/std:c++20', '/rdc=true'] if sys.platform == "win32" else ['--std=
 nvcc_flags = ['-std=c++20', '-rdc=true']
 if ENABLE_NVCC_LINEINFO:
     nvcc_flags.append('-lineinfo')
+if int(CUDA_VERSION.split('.')[0]) >= 13:
+    nvcc_flags.append('-static-global-template-stub=false')  # Enforce old compiler behavior
 
 benchmark_cxx_flags = ["/O2"] if sys.platform == "win32" else ["-O3"]
 benchmark_nvcc_flags = ['-O3', '-use_fast_math']
