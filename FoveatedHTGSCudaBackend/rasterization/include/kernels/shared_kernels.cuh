@@ -1,10 +1,13 @@
 #pragma once
 
 #include "helper_math.h"
+#include "utils.h"
 #include "utils/enums.h"
 #include "utils/kernel_utils.cuh"
 #include <cstdint>
 #include <limits>
+#include <cooperative_groups.h>
+namespace cg = cooperative_groups;
 
 
 namespace htgs_foveated::rasterization::kernels::shared {
@@ -13,7 +16,7 @@ namespace htgs_foveated::rasterization::kernels::shared {
     __global__ void create_instances_cu(
         const uint* primitive_n_touched_tiles,
         const uint* primitive_offsets,
-        const uint4* primitive_screen_bounds,
+        const ushort4* primitive_screen_bounds,
         KeyT* instance_keys,
         uint* instance_primitive_indices,
         const uint32_t* visibility_mask,
@@ -21,31 +24,108 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint grid_width,
         const uint n_primitives)
     {
-        const uint primitive_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
-        if (primitive_idx >= n_primitives || primitive_n_touched_tiles[primitive_idx] == 0) return;
-        const uint4 screen_bounds = primitive_screen_bounds[primitive_idx];
-        uint offset = (primitive_idx == 0) ? 0 : primitive_offsets[primitive_idx - 1];
-        for (uint y = screen_bounds.z; y < screen_bounds.w; ++y) {
-            for (uint x = screen_bounds.x; x < screen_bounds.y; ++x) {
-                const KeyT tile_idx = y * grid_width + x;
-                const int mask_byte_idx = tile_idx / 32;
-                const int mask_bit_idx = tile_idx % 32;
-                if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) == 0) continue;
+        constexpr uint warp_size = 32;
+        constexpr uint n_sequential_threshold = 2;
+        auto block = cg::this_thread_block();
+        auto warp = cg::tiled_partition<warp_size>(block);
+        uint primitive_idx = cg::this_grid().thread_rank();
+        const uint thread_rank = block.thread_rank();
+        const uint warp_idx = warp.meta_group_rank();
+        const uint warp_start = warp_idx * warp_size;
+        const uint lane_idx = warp.thread_rank();
+        const uint previous_lanes_mask = (1 << lane_idx) - 1;
 
-                if (is_in_fovea<foveation_radius_tiles>(make_int2(static_cast<int>(x), static_cast<int>(y)), grid_width, gaze_position_tiles)) {
-                    // Tile is in fovea, so create instances for each small tile
-                    #pragma unroll num_small_tiles
-                    for (uint i = 0; i < num_small_tiles; ++i) {
-                        instance_keys[offset] = tile_idx * num_small_tiles + i;
-                        instance_primitive_indices[offset] = primitive_idx;
-                        offset++;
-                    }
-                } else {
-                    instance_keys[offset] = tile_idx * num_small_tiles;
-                    instance_primitive_indices[offset] = primitive_idx;
-                    offset++;
+        bool active = true;
+        if (primitive_idx >= n_primitives) {
+            active = false;
+            primitive_idx = n_primitives - 1;
+        }
+
+        const uint tile_count_init = primitive_n_touched_tiles[primitive_idx];
+        if (tile_count_init == 0) active = false;
+
+        if (warp.ballot(active) == 0) return;
+
+        const ushort4 screen_bounds = primitive_screen_bounds[primitive_idx];
+        const uint screen_bounds_width = static_cast<uint>(screen_bounds.y - screen_bounds.x);
+        const uint instance_count = static_cast<uint>(screen_bounds.w - screen_bounds.z) * screen_bounds_width;
+
+        uint current_write_offset = (primitive_idx == 0) ? 0 : primitive_offsets[primitive_idx - 1];
+
+        for (uint instance_idx = 0; active && instance_idx < instance_count && instance_idx < n_sequential_threshold; instance_idx++) {
+            const uint tile_x = screen_bounds.x + (instance_idx % screen_bounds_width);
+            const uint tile_y = screen_bounds.z + (instance_idx / screen_bounds_width);
+            const uint tile_idx = tile_y * grid_width + tile_x;
+
+            if ((visibility_mask[tile_idx / 32u] & (1 << (tile_idx % 32u))) == 0) continue;
+
+            const KeyT instance_key = static_cast<KeyT>(tile_idx * num_small_tiles);
+            if (is_in_fovea<foveation_radius_tiles>(tile_x, tile_y, grid_width, gaze_position_tiles)) {
+                // Tile is in fovea, so create instances for each small tile
+                #pragma unroll num_small_tiles
+                for (ushort i = 0; i < num_small_tiles; ++i) {
+                    instance_keys[current_write_offset] = instance_key + i;
+                    instance_primitive_indices[current_write_offset] = primitive_idx;
+                    current_write_offset++;
                 }
+            } else {
+                instance_keys[current_write_offset] = instance_key;
+                instance_primitive_indices[current_write_offset] = primitive_idx;
+                current_write_offset++;
             }
+        }
+
+        const bool compute_cooperatively = active && instance_count > n_sequential_threshold;
+        const uint remaining_threads = warp.ballot(compute_cooperatively);
+        if (remaining_threads == 0) return;
+
+        __shared__ ushort4 collected_screen_bounds[config::block_size_create_instances];
+        collected_screen_bounds[thread_rank] = screen_bounds;
+
+        const uint n_remaining_threads = __popc(remaining_threads);
+        for (uint n = 0; n < n_remaining_threads && n < warp_size; n++) {
+            const uint current_lane = __fns(remaining_threads, 0, n + 1);
+            const uint primitive_idx_coop = warp.shfl(primitive_idx, current_lane);
+            uint current_write_offset_coop = warp.shfl(current_write_offset, current_lane);
+
+            const uint read_offset_shared = warp_start + current_lane;
+            const ushort4 screen_bounds_coop = collected_screen_bounds[read_offset_shared];
+
+            const uint screen_bounds_width_coop = static_cast<uint>(screen_bounds_coop.y - screen_bounds_coop.x);
+            const uint instance_count_coop = screen_bounds_width_coop * static_cast<uint>(screen_bounds_coop.w - screen_bounds_coop.z);
+
+            const uint remaining_instance_count = instance_count_coop - n_sequential_threshold;
+            const uint n_iterations = div_round_up(remaining_instance_count, warp_size);
+            for (uint i = 0; i < n_iterations; i++) {
+                const uint instance_idx = i * warp_size + lane_idx + n_sequential_threshold;
+                const uint tile_x = screen_bounds_coop.x + (instance_idx % screen_bounds_width_coop);
+                const uint tile_y = screen_bounds_coop.z + (instance_idx / screen_bounds_width_coop);
+                const uint tile_idx = tile_y * grid_width + tile_x;
+                const bool valid_tile = (visibility_mask[tile_idx / 32u] & (1 << (tile_idx % 32u))) != 0;
+                const bool write = instance_idx < instance_count_coop && valid_tile;
+                const uint write_ballot = warp.ballot(write);
+                const bool is_fovea = write && is_in_fovea<foveation_radius_tiles>(tile_x, tile_y, grid_width, gaze_position_tiles);
+                const uint is_fovea_ballot = warp.ballot(is_fovea);
+                if (write) {
+                    uint write_offset = current_write_offset_coop + __popc(write_ballot & previous_lanes_mask) + (num_small_tiles - 1) * __popc(is_fovea_ballot & previous_lanes_mask);
+                    const KeyT instance_key = static_cast<KeyT>(tile_idx * num_small_tiles);
+                    if (is_fovea) {
+                        // Tile is in fovea, so create instances for each small tile
+                        #pragma unroll num_small_tiles
+                        for (ushort i = 0; i < num_small_tiles; ++i) {
+                            instance_keys[write_offset] = instance_key + i;
+                            instance_primitive_indices[write_offset] = primitive_idx_coop;
+                            write_offset++;
+                        }
+                    } else {
+                        instance_keys[write_offset] = instance_key;
+                        instance_primitive_indices[write_offset] = primitive_idx_coop;
+                    }
+                }
+                const uint n_written = __popc(write_ballot) + (num_small_tiles - 1) * __popc(is_fovea_ballot);
+                current_write_offset_coop += n_written;
+            }
+            warp.sync();
         }
     }
 
@@ -83,8 +163,8 @@ namespace htgs_foveated::rasterization::kernels::shared {
         const uint tile_idx = __umul24(blockIdx.x, blockDim.x) + threadIdx.x;
         if (tile_idx >= num_tiles_total) return;
 
-        const uint mask_byte_idx = tile_idx / 32;
-        const uint mask_bit_idx = tile_idx % 32;
+        const uint mask_byte_idx = tile_idx / 32u;
+        const uint mask_bit_idx = tile_idx % 32u;
 
         if ((visibility_mask[mask_byte_idx] & (1 << mask_bit_idx)) != 0) {
             if (is_in_fovea<foveation_radius_tiles>(tile_idx, grid_width, gaze_position_tiles)) {

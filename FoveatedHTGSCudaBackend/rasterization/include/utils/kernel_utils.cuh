@@ -60,12 +60,13 @@ __forceinline__ __device__ bool is_in_fovea(
 
 template <uint radius>
 __forceinline__ __device__ bool is_in_fovea(
-    const int2 tile_coords,
+    const uint tile_x,
+    const uint tile_y,
     const uint grid_width,
     const float2 gaze_position_tiles)
 {
     constexpr float radius_sq = static_cast<float>(radius * radius);
-    const float2 to_gaze = make_float2(tile_coords.x + 0.5f, tile_coords.y + 0.5f) - gaze_position_tiles;
+    const float2 to_gaze = make_float2(__uint2float_rn(tile_x) + 0.5f, __uint2float_rn(tile_y) + 0.5f) - gaze_position_tiles;
     const float squared_distance_to_gaze = dot(to_gaze, to_gaze);
 
     return squared_distance_to_gaze < radius_sq;

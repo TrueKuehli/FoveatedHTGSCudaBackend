@@ -13,6 +13,32 @@
 
 namespace htgs_foveated::rasterization::kernels::inference {
 
+    struct FragmentInfo {
+        float depth;
+        uint32_t color;
+        __device__ FragmentInfo() : depth(__FLT_MAX__), color(0) {}
+        static __host__ __device__ __forceinline__ uint32_t pack_channel(const float x) {
+            return static_cast<uint32_t>(fminf(fmaxf(x, 0.0f), 1.0f) * 255.0f + 0.5f);
+        }
+        __host__ __device__ FragmentInfo(const float d, const float4 c)
+            : depth(d),
+              color(
+                  (pack_channel(c.x)      ) |
+                  (pack_channel(c.y) <<  8) |
+                  (pack_channel(c.z) << 16) |
+                  (pack_channel(c.w) << 24)
+              ) {}
+        __device__ float4 get_color() const {
+            return make_float4(
+                static_cast<float>((color >>  0) & 0xff),
+                static_cast<float>((color >>  8) & 0xff),
+                static_cast<float>((color >> 16) & 0xff),
+                static_cast<float>((color >> 24) & 0xff)
+            ) * (1.0f / 255.0f);
+        }
+    };
+    __device__ __forceinline__ bool operator<(const FragmentInfo& a, const FragmentInfo& b) { return a.depth < b.depth; }
+
     template<bool aaa_mode, uint8_t cam_idx>
     __global__ void preprocess_cu(
         const float3* positions,
@@ -22,7 +48,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
         const float3* sh_0,
         const float3* sh_rest,
         uint* primitive_n_touched_tiles,
-        uint4* primitive_screen_bounds,
+        ushort4* primitive_screen_bounds,
         float4* primitive_VPMT1,
         float4* primitive_VPMT2,
         float4* primitive_VPMT4,
@@ -87,7 +113,12 @@ namespace htgs_foveated::rasterization::kernels::inference {
 
         // write intermediate results
         primitive_n_touched_tiles[primitive_idx] = n_touched_tiles;
-        primitive_screen_bounds[primitive_idx] = screen_bounds;
+        primitive_screen_bounds[primitive_idx] = make_ushort4(
+            static_cast<ushort>(screen_bounds.x),
+            static_cast<ushort>(screen_bounds.y),
+            static_cast<ushort>(screen_bounds.z),
+            static_cast<ushort>(screen_bounds.w)
+        );
         primitive_VPMT1[primitive_idx] = VPMT1;
         primitive_VPMT2[primitive_idx] = VPMT2;
         primitive_VPMT4[primitive_idx] = VPMT4;
@@ -146,14 +177,10 @@ namespace htgs_foveated::rasterization::kernels::inference {
         // initialize local storage
         float transmittance_tail = 1.0f;
         float4 rgba_premultiplied_tail = make_float4(0.0f);
-        __half2 rgbas_premultiplied_core_rg[K];
-        __half2 rgbas_premultiplied_core_ba[K];
-        float depths_core[K];
+        FragmentInfo core_fragments[K];
         #pragma unroll
         for (int i = 0; i < K; ++i) {
-            rgbas_premultiplied_core_rg[i]= {0};
-            rgbas_premultiplied_core_ba[i]= {0};
-            depths_core[i] = __FLT_MAX__;
+            core_fragments[i] = FragmentInfo();
         }
         // collaborative loading and processing
         const uint2 tile_range = tile_instance_ranges[true_group_index];
@@ -185,29 +212,27 @@ namespace htgs_foveated::rasterization::kernels::inference {
                     const float denominator = dot(d, d);
                     if (numerator_rho2 > config::max_cutoff_sq * denominator) continue; // considering opacity requires log/sqrt -> slower
                     const float denominator_rcp = 1.0f / denominator;
-                    const float3 eval_point_diag = cross(d, m) * denominator_rcp;
-                    float depth = dot(make_float3(VPMT4), eval_point_diag) + VPMT4.w;
                     const float G = expf(-0.5f * numerator_rho2 * denominator_rcp);
                     const float alpha = fminf(collected_opacity[j] * G, config::max_fragment_alpha);
                     if (alpha < config::min_alpha_threshold) continue;
+                    const float3 eval_point_diag = cross(d, m) * denominator_rcp;
+                    float depth = dot(make_float3(VPMT4), eval_point_diag) + VPMT4.w;
 
                     const float3 rgb = collected_rgb[j];
-                    __half2 rgba_premultiplied_rg = __float22half2_rn(make_float2(rgb.x * alpha, rgb.y * alpha));
-                    __half2 rgba_premultiplied_ba = __float22half2_rn(make_float2(rgb.z * alpha, alpha));
+                    float4 rgba_premultiplied = make_float4(rgb.x * alpha, rgb.y * alpha, rgb.z * alpha, alpha);
 
-                    if (depth < depths_core[K - 1] && alpha >= config::min_alpha_threshold_core) {
+                    if (depth < core_fragments[K - 1].depth && alpha >= config::min_alpha_threshold_core) {
+                        FragmentInfo core_fragment(depth, rgba_premultiplied);
                         #pragma unroll
                         for (int core_idx = 0; core_idx < K; ++core_idx) {
-                            if (depth < depths_core[core_idx]) {
-                                swap(depth, depths_core[core_idx]);
-                                swap(rgba_premultiplied_rg, rgbas_premultiplied_core_rg[core_idx]);
-                                swap(rgba_premultiplied_ba, rgbas_premultiplied_core_ba[core_idx]);
+                            if (core_fragment < core_fragments[core_idx]) {
+                                swap(core_fragment, core_fragments[core_idx]);
                             }
                         }
+                        rgba_premultiplied = core_fragment.get_color();
                     }
-                    const float4 primitive_rgba_premultiplied_tail = make_float4(__half2float(rgba_premultiplied_rg.x), __half2float(rgba_premultiplied_rg.y), __half2float(rgba_premultiplied_ba.x), __half2float(rgba_premultiplied_ba.y));
-                    const float primitive_transmittance_tail = 1.0f - __half2float(rgba_premultiplied_ba.y);
-                    rgba_premultiplied_tail += primitive_rgba_premultiplied_tail;
+                    const float primitive_transmittance_tail = 1.0f - rgba_premultiplied.w;
+                    rgba_premultiplied_tail += rgba_premultiplied;
                     transmittance_tail *= primitive_transmittance_tail;
                 }
             }
@@ -216,18 +241,14 @@ namespace htgs_foveated::rasterization::kernels::inference {
             // blend core
             float3 rgb_pixel = make_float3(0.0f);
             float transmittance_core = 1.0f;
-            bool done = false;
             #pragma unroll
-            for (int core_idx = 0; core_idx < K && !done; ++core_idx) {
-                const float2 rgba_premultiplied_rg = __half22float2(rgbas_premultiplied_core_rg[core_idx]);
-                const float2 rgba_premultiplied_ba = __half22float2(rgbas_premultiplied_core_ba[core_idx]);
-                const float3 rgb_premultiplied = make_float3(rgba_premultiplied_rg.x, rgba_premultiplied_rg.y, rgba_premultiplied_ba.x);
-                rgb_pixel += transmittance_core * rgb_premultiplied;
-                transmittance_core *= 1.0f - rgba_premultiplied_ba.y;
-                if (transmittance_core < config::transmittance_threshold) done = true;
+            for (int core_idx = 0; core_idx < K && transmittance_core >= config::transmittance_threshold; ++core_idx) {
+                const float4 rgba_premultiplied = core_fragments[core_idx].get_color();
+                rgb_pixel += transmittance_core * make_float3(rgba_premultiplied);
+                transmittance_core *= 1.0f - rgba_premultiplied.w;
             }
             // blend tail
-            if (!done && rgba_premultiplied_tail.w >= config::min_alpha_threshold) {
+            if (transmittance_core >= config::transmittance_threshold && rgba_premultiplied_tail.w >= config::min_alpha_threshold) {
                 const float weight_tail = transmittance_core * (1.0f - transmittance_tail);
                 rgb_pixel += weight_tail * (1.0f / rgba_premultiplied_tail.w) * make_float3(rgba_premultiplied_tail);
             }

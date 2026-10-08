@@ -26,7 +26,7 @@ namespace htgs_foveated::rasterization {
         char* cub_workspace;
         uint* n_touched_tiles;
         uint* offset;
-        uint4* screen_bounds;
+        ushort4* screen_bounds;
         float4* VPMT1;
         float4* VPMT2;
         float4* VPMT4;

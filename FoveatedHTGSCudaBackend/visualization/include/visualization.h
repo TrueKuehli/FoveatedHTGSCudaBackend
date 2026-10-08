@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 
 #include "enums.h"
 #include "helper_math.h"
