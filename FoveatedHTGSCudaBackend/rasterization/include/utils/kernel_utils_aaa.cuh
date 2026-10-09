@@ -137,8 +137,8 @@ __device__ inline float normalize_angle(
 {
     constexpr float pi = 3.141592654f;
     constexpr float two_pi = 2.0f * pi;
-    theta = fmodf(theta, two_pi); // Wrap to (-2π, 2π)
-    if (theta > pi) theta -= two_pi; // Adjust to (-π, π]
+    theta = fmodf(theta, two_pi); // Wrap to (-2*pi, 2*pi)
+    if (theta > pi) theta -= two_pi; // Adjust to (-pi, pi]
     if (theta <= -pi) theta += two_pi;
     return theta;
 }
