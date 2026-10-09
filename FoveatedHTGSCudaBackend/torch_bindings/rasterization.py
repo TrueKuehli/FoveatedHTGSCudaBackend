@@ -80,7 +80,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             settings: RasterizerSettings,
             to_chw: bool,
             blur_periphery: bool,
-            anti_aliasing: bool,
+            aaa_mode: bool,
     ) -> torch.Tensor:
         image = _C.render(
             positions,
@@ -92,7 +92,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             *settings.as_tuple(),
             to_chw,
             blur_periphery,
-            anti_aliasing,
+            aaa_mode,
         )
         return image
 
@@ -107,7 +107,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             settings: RasterizerSettings,
             to_chw: bool,
             blur_periphery: bool,
-            anti_aliasing: bool,
+            aaa_mode: bool,
     ) -> torch.Tensor:
         image = _C_benchmarking.benchmark(
             positions,
@@ -119,7 +119,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             *settings.as_tuple(),
             to_chw,
             blur_periphery,
-            anti_aliasing,
+            aaa_mode,
         )
         return image
     
@@ -135,7 +135,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             settings_right: RasterizerSettings,
             to_chw: bool,
             blur_periphery: bool,
-            anti_aliasing: bool,
+            aaa_mode: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         image_left, image_right = _C_stereo.render(
             positions,
@@ -148,7 +148,7 @@ class FoveatedHTGSRasterizer(torch.nn.Module):
             *settings_right.as_tuple(),
             to_chw,
             blur_periphery,
-            anti_aliasing,
+            aaa_mode,
         )
         return image_left, image_right
 
