@@ -10,6 +10,7 @@ class BackgroundModel(Enum):
     NONE = 0
     SH = 1
     TEXTURE = 2
+    TEXTURE_RAW = 3  # texture storing pre-activation values, activated after interpolation
 
 
 class GazeVisualizationType(Enum):

@@ -41,6 +41,7 @@ static void blend_k_templated(
 {
     if (background_model == BackgroundModelType::SH) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::SH>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
     else if (background_model == BackgroundModelType::TEXTURE) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::TEXTURE>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
+    else if (background_model == BackgroundModelType::TEXTURE_RAW) blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::TEXTURE_RAW>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
     else blend_k_templated_background_model<is_lowres_tile, BackgroundModelType::NONE>(grid, block, stream, K, std::forward<Args>(kernel_args)...);
 }
 

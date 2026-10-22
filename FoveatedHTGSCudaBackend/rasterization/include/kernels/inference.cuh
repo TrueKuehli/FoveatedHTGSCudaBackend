@@ -258,10 +258,12 @@ namespace htgs_foveated::rasterization::kernels::inference {
                 if (weight_background >= config::transmittance_threshold) {
                     rgb_pixel += weight_background * background_model::eval_sh_background_model<cam_idx>(pixel_x, pixel_y);
                 }
-            } else if constexpr (background_model == BackgroundModelType::TEXTURE) {
+            } else if constexpr (background_model == BackgroundModelType::TEXTURE || background_model == BackgroundModelType::TEXTURE_RAW) {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
-                    rgb_pixel += weight_background * background_model::eval_tex_background_model<config::environment_map_width, config::environment_map_height, cam_idx>(
+                    rgb_pixel += weight_background * background_model::eval_tex_background_model<
+                        config::environment_map_width, config::environment_map_height,
+                        background_model == BackgroundModelType::TEXTURE_RAW, cam_idx>(
                         pixel_x, pixel_y, background_model_data
                     );
                 }

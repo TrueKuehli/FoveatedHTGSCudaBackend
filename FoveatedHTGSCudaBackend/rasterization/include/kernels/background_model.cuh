@@ -48,7 +48,8 @@ namespace htgs_foveated::rasterization::kernels::background_model {
     }
 
 
-    template<int width, int height, uint8_t cam_idx>
+    // apply_activation is used with raw, pre-sigmoid textures
+    template<int width, int height, bool apply_activation, uint8_t cam_idx>
     __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x, const float pixel_y, const float* texture_data) {
         const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
         const float3 pixel_coords_transformed = normalize(make_float3(
@@ -62,7 +63,7 @@ namespace htgs_foveated::rasterization::kernels::background_model {
 
         const float2 equirectangular_coords = make_float2(
             atan2f(pixel_coords_transformed.x, pixel_coords_transformed.z) / M_PIf * 0.5f + 0.5f,
-            asinf(-pixel_coords_transformed.y) / (0.5f * M_PIf) * 0.5f + 0.5f
+            asinf(pixel_coords_transformed.y) / (0.5f * M_PIf) * 0.5f + 0.5f
         );
 
         // Bilinear interpolation
@@ -100,7 +101,8 @@ namespace htgs_foveated::rasterization::kernels::background_model {
 
             const float c0 = c00 * (1.0f - fx) + c10 * fx;
             const float c1 = c01 * (1.0f - fx) + c11 * fx;
-            const float c = c0 * (1.0f - fy) + c1 * fy;
+            float c = c0 * (1.0f - fy) + c1 * fy;
+            if constexpr (apply_activation) c = 1.0f / (1.0f + __expf(-c));
 
             if (channel == 0) color.x = c;
             else if (channel == 1) color.y = c;
