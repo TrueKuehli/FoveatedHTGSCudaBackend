@@ -63,9 +63,12 @@ torch::Tensor htgs_foveated::rasterization::inference_wrapper(
         visibility_mask_area_table.data_ptr<uint>(),
         fovea_mask_area_table.data_ptr<uint>()
     };
+    const BackgroundModelType bg_model_type = static_cast<BackgroundModelType>(background_model_type);
     const BackgroundModel bg_model = {
         background_model_data.data_ptr<float>(),
-        static_cast<BackgroundModelType>(background_model_type)
+        bg_model_type,
+        bg_model_type == BackgroundModelType::TEXTURE || bg_model_type == BackgroundModelType::TEXTURE_RAW
+            ? make_int2(background_model_data.size(2), background_model_data.size(1)) : make_int2(0, 0)
     };
 
 

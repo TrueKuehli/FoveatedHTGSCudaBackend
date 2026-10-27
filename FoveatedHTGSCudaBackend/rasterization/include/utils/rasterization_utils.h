@@ -43,6 +43,7 @@ struct Masks {
 struct BackgroundModel {
     const float* data;
     const BackgroundModelType type;
+    const int2 texture_resolution;  // only set for TEXTURE / TEXTURE_RAW
 };
 
 

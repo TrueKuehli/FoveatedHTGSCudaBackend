@@ -109,9 +109,12 @@ std::tuple<torch::Tensor, torch::Tensor> htgs_foveated::rasterization::inference
     };
 
     // Assume background model type is the same for both eyes
+    const BackgroundModelType bg_model_type = static_cast<BackgroundModelType>(background_model_type_left);
     const BackgroundModel bg_model = {
         background_model_data_left.data_ptr<float>(),
-        static_cast<BackgroundModelType>(background_model_type_left)
+        bg_model_type,
+        bg_model_type == BackgroundModelType::TEXTURE || bg_model_type == BackgroundModelType::TEXTURE_RAW
+            ? make_int2(background_model_data_left.size(2), background_model_data_left.size(1)) : make_int2(0, 0)
     };
     (void) background_model_data_right; // Unused
     (void) background_model_type_right; // Unused

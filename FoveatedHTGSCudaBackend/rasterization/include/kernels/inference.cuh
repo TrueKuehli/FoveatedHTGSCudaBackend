@@ -145,6 +145,7 @@ namespace htgs_foveated::rasterization::kernels::inference {
         const float4* primitive_VPMT4,
         const float4* primitive_rgba,
         const float* background_model_data,
+        const int2 background_model_resolution,
         float* image,
         const uint tile_offset,
         const uint width,
@@ -262,9 +263,8 @@ namespace htgs_foveated::rasterization::kernels::inference {
                 const float weight_background = transmittance_core * transmittance_tail;
                 if (weight_background >= config::transmittance_threshold) {
                     rgb_pixel += weight_background * background_model::eval_tex_background_model<
-                        config::environment_map_width, config::environment_map_height,
                         background_model == BackgroundModelType::TEXTURE_RAW, cam_idx>(
-                        pixel_x, pixel_y, background_model_data
+                        pixel_x, pixel_y, background_model_data, background_model_resolution
                     );
                 }
             }

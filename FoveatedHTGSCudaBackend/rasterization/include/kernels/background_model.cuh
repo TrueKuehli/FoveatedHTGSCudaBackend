@@ -49,8 +49,10 @@ namespace htgs_foveated::rasterization::kernels::background_model {
 
 
     // apply_activation is used with raw, pre-sigmoid textures
-    template<int width, int height, bool apply_activation, uint8_t cam_idx>
-    __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x, const float pixel_y, const float* texture_data) {
+    template<bool apply_activation, uint8_t cam_idx>
+    __forceinline__ __device__ float3 eval_tex_background_model(const float pixel_x, const float pixel_y, const float* texture_data, const int2 texture_resolution) {
+        const int width = texture_resolution.x;
+        const int height = texture_resolution.y;
         const float4 pixel_coords = make_float4(pixel_x, pixel_y, 1.0, 1.0);
         const float3 pixel_coords_transformed = normalize(make_float3(
             dot(c_VPR_inv[cam_idx][0], pixel_coords),
@@ -79,8 +81,8 @@ namespace htgs_foveated::rasterization::kernels::background_model {
         const float fy = tex_y - y0;
 
         // Wrap coordinates for seamless horizontal tiling
-        const int x0_wrapped = (x0 % width + width) % width;
-        const int x1_wrapped = (x1 % width + width) % width;
+        const int x0_wrapped = x0 < 0 ? x0 + width : x0;
+        const int x1_wrapped = x1 >= width ? x1 - width : x1;
         const int y0_clamped = max(0, min(height - 1, y0));
         const int y1_clamped = max(0, min(height - 1, y1));
 
@@ -91,9 +93,10 @@ namespace htgs_foveated::rasterization::kernels::background_model {
         const int idx11 = x1_wrapped + y1_clamped * width;
 
         // Bilinear interpolation for each color channel
+        const int n_texels = width * height;
         float3 color = make_float3(0.0f, 0.0f, 0.0f);
         for (int channel = 0; channel < 3; ++channel) {
-            const int offset = channel * width * height;
+            const int offset = channel * n_texels;
             const float c00 = texture_data[idx00 + offset];
             const float c10 = texture_data[idx10 + offset];
             const float c01 = texture_data[idx01 + offset];
